@@ -1,12 +1,8 @@
-# YTTV Sports Deeplink Aggregator
+# YTTV Sports Deeplinks
 
-Standalone Docker service for **YouTube TV** (`tv.youtube.com`) sports events. It runs Chromium in the container, stores that session encrypted, and publishes XMLTV / M3U / APITuner lanes with per-event `tv.youtube.com/watch/…` links.
+YouTube TV sports guide with a watch link per game. Sign in once in the container browser, then use XMLTV / M3U / APITuner lanes.
 
-It is not limited to ESPN+. The miner walks the linear sports grid plus extras that are not linear channels (NBCSN Extra, BTN Overflow, SEC+, ESPN Unlimited, and other sports hubs) and keeps the schedule as far out as YouTube TV exposes it.
-
-Linear news and entertainment are ignored. On the dashboard, hide channel families you do not want (ESPN+, NBC Sports Extra, Big Ten extras, linear ESPN, FS1, CBS Sports, …) and sports you do not watch. Those filters apply to lanes, XMLTV, and M3U.
-
-This is not YouTube on TV (`youtube.com/tv`). It is not part of APITuner; APITuner only consumes the HTTP feeds.
+This is not YouTube on TV (`youtube.com/tv`). It is not part of APITuner.
 
 The Compose service and volume stay `yttv-espn-plus` so an existing login is reused.
 
@@ -37,7 +33,7 @@ Set `PUBLIC_BASE_URL` if APITuner should always use a fixed host, for example `h
 
 | URL | Use |
 | --- | --- |
-| `/xmltv.xml` | Sports guide (filtered) |
+| `/xmltv.xml` | Sports guide (filtered). This is the Channels DVR XMLTV URL. |
 | `/playlist.m3u` | Virtual lanes (`YTTV Sports 1` …) |
 | `/whatson/{n}` | Current event deeplink (`https://tv.youtube.com/watch/...`) |
 | `/api/export` | APITuner channel JSON |

@@ -78,6 +78,12 @@ def test_extras_and_volleyball_are_sports_events():
     assert is_sports_event("FS1", "NASCAR Cup Series at Darlington")
     assert infer_sport("Disc Golf Pro Tour", "ESPNews") == "Disc Golf"
     assert infer_sport("Fairleigh Dickinson vs. Lafayette", "ESPN+") == "Other"
+    assert infer_sport("Court 8", "ESPN Unlimited") == "Tennis"
+    assert infer_sport("United States vs. Czechia", "truTV") == "Hockey"
+    assert infer_sport("Race Day Live: Columbus", "NBCSN Extra") == "Horse Racing"
+    assert not is_sports_event("Telemundo", "El señor de los cielos: Extras")
+    assert not is_sports_event("NBCSN Extra", "The Dan Patrick Show")
+    assert is_sports_event("ESPN Unlimited", "Court 4")
     assert infer_sport("Elon vs. Eastern Michigan", "ESPN") == "Football"
     assert resolve_sport("Elon vs. Eastern Michigan", "ESPN", stored="Volleyball") == "Volleyball"
     assert is_junk("FOX 2 News at 10pm", "FOX 2")

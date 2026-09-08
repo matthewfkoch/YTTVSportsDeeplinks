@@ -8,7 +8,7 @@ from yttv_epg.config import settings
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="YTTV Sports Deeplink Aggregator")
+    parser = argparse.ArgumentParser(description="YTTV Sports Deeplinks")
     parser.add_argument("--host", default=settings.host)
     parser.add_argument("--port", type=int, default=settings.port)
     args = parser.parse_args()

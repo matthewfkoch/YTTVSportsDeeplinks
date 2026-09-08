@@ -88,6 +88,7 @@ def apituner_export(
             {
                 "number": start_channel + lane - 1,
                 "name": lane_name(lane),
+                "tvg_id": lane_id(lane),
                 "provider_name": "youtube_tv",
                 "package_name": package_name,
                 "alternate_package_name": alternate_package_name,

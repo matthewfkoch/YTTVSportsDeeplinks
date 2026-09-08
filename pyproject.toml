@@ -1,7 +1,7 @@
 [project]
 name = "yttv-espn-plus"
 version = "0.1.0"
-description = "YouTube TV sports event guide and deeplink aggregator"
+description = "YouTube TV sports guide and deeplinks"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

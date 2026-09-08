@@ -23,14 +23,14 @@ def test_dashboard_imports_cookies_not_a_password_or_oauth_form():
     with TestClient(app) as client:
         home = client.get("/")
         assert home.status_code == 200
-        assert "YTTV Sports Deeplink Aggregator" in home.text
-        assert "Sports to include" in home.text
-        assert "Channels to include" in home.text
+        assert "YTTV Sports Deeplinks" in home.text
+        assert "Sports" in home.text
+        assert "Channels" in home.text
         assert "When live" not in home.text
+        assert "Tap a chip" not in home.text
         assert "Import session" in home.text
-        assert "container Chromium" in home.text
         assert "tv.youtube.com" in home.text
-        assert "YouTube on TV" in home.text
+        assert "youtube.com/tv" in home.text
         assert "Continue with Google" not in home.text
         assert 'type="password"' not in home.text
         assert 'name="password"' not in home.text
@@ -112,6 +112,14 @@ def test_channel_filter_hides_espn_plus_from_lanes():
         assert "UConn vs Maryland" not in home.text
         assert "Cowboys vs Giants" in home.text
         assert "ESPN+ · 1" in home.text
+        assert "Select all" in home.text
+        assert "Unselect all" in home.text
+        assert "Tap a chip" not in home.text
+        hidden_all = client.post("/api/filters", json={"hidden_channels": ["ESPN+", "ESPN"]})
+        assert set(hidden_all.json()["hidden_channels"]) == {"ESPN+", "ESPN"}
+        empty = client.get("/")
+        assert "UConn vs Maryland" not in empty.text
+        assert "Cowboys vs Giants" not in empty.text
         client.post("/api/filters", json={"hidden_channels": []})
         state.catalog.replace([], [])
 

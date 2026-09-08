@@ -152,7 +152,7 @@ async function watchChromeLogin() {
     const status = statusResponse.ok ? await statusResponse.json() : { available: false };
     if (!status.available) {
       if (note) {
-        note.textContent = "Container Chromium is not up yet. You can paste cookies below, or wait and refresh.";
+        note.textContent = "The in-container browser is not ready yet. Wait a moment, or paste cookies below.";
       }
       await new Promise((resolve) => setTimeout(resolve, 3000));
       continue;
@@ -172,7 +172,7 @@ async function watchChromeLogin() {
       hideToast();
       errorEl.textContent = await readError(capture);
     } else if (note) {
-      note.textContent = "Waiting for you to finish Google sign-in in the window above…";
+      note.textContent = "Waiting for you to finish signing in…";
     }
     await new Promise((resolve) => setTimeout(resolve, 2500));
   }
@@ -191,23 +191,35 @@ function postFilter(body, message) {
 }
 
 document.getElementById("sport-chips")?.addEventListener("click", (event) => {
-  const chip = event.target.closest("[data-sport]");
-  if (!chip || actionInFlight) return;
-  postFilter({ toggle: chip.dataset.sport }, "Updating sports…");
+  const button = event.target.closest("[data-sport]");
+  if (!button || actionInFlight) return;
+  postFilter({ toggle: button.dataset.sport }, "Updating sports…");
 });
 
 document.getElementById("channel-chips")?.addEventListener("click", (event) => {
-  const chip = event.target.closest("[data-channel]");
-  if (!chip || actionInFlight) return;
-  postFilter({ toggle_channel: chip.dataset.channel }, "Updating channels…");
+  const button = event.target.closest("[data-channel]");
+  if (!button || actionInFlight) return;
+  postFilter({ toggle_channel: button.dataset.channel }, "Updating channels…");
 });
 
-document.getElementById("reset-filters")?.addEventListener("click", () => {
-  postFilter({ hidden: [] }, "Showing every sport…");
+function listedNames(selector, attr) {
+  return [...document.querySelectorAll(selector)].map((el) => el.getAttribute(attr)).filter(Boolean);
+}
+
+document.getElementById("select-sports")?.addEventListener("click", () => {
+  postFilter({ hidden: [] }, "Including all sports…");
 });
 
-document.getElementById("reset-channels")?.addEventListener("click", () => {
-  postFilter({ hidden_channels: [] }, "Showing every channel…");
+document.getElementById("unselect-sports")?.addEventListener("click", () => {
+  postFilter({ hidden: listedNames("[data-sport]", "data-sport") }, "Excluding all sports…");
+});
+
+document.getElementById("select-channels")?.addEventListener("click", () => {
+  postFilter({ hidden_channels: [] }, "Including all stations…");
+});
+
+document.getElementById("unselect-channels")?.addEventListener("click", () => {
+  postFilter({ hidden_channels: listedNames("[data-channel]", "data-channel") }, "Excluding all stations…");
 });
 
 searchEl?.addEventListener("input", () => {

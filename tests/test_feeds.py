@@ -68,6 +68,7 @@ def test_apituner_export_is_separate_source():
         alternate_package_name="com.amazon.firetv.youtube.tv",
     )
     assert rows[0]["source"] == "yttv-sports"
+    assert rows[0]["tvg_id"] == "yttv-sports-1"
     assert rows[0]["package_name"] == "com.google.android.youtube.tvunplugged"
 
 

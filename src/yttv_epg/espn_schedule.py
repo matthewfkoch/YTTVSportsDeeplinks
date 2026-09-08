@@ -14,6 +14,7 @@ from yttv_epg.sports import (
     MATCHUP_AT_RE,
     MATCHUP_VS_RE,
     infer_sport,
+    is_espn_plus,
     is_studio_show,
     norm_name,
 )
@@ -53,6 +54,7 @@ SPORT_ALIASES = {
     "BOXING": "Combat",
     "PRO WRESTLING": "Combat",
     "WRESTLING": "Combat",
+    "FISHING": "Fishing",
     "TRACK & FIELD": "Track",
     "TRACK AND FIELD": "Track",
     "NHL": "Hockey",
@@ -82,6 +84,7 @@ LEAGUE_HINTS = (
     ("HOCKEY", "Hockey"),
     ("TENNIS", "Tennis"),
     ("GOLF", "Golf"),
+    ("FISHING", "Fishing"),
 )
 
 SKIP_SPORTS = {
@@ -97,7 +100,6 @@ SKIP_SPORTS = {
     "OTHERS",
     "GAMING",
     "CORNHOLE",
-    "FISHING",
     "SPIKEBALL",
     "JAI ALAI",
     "AXE THROWING",
@@ -135,6 +137,7 @@ SKY_PREFIX_RE = re.compile(r"^(?:SKYCAST|SKYCAM\+)\s*[-:]\s*", re.I)
 SKY_SUFFIX_RE = re.compile(r"\s*\((?:SKYCAST|SKYCAM\+)\)\s*$", re.I)
 SEED_RE = re.compile(r"\(\d+\)\s*")
 RANK_RE = re.compile(r"#\d+\s*")
+COURT_KEY_RE = re.compile(r"\bCOURT\s+(\d+)\b")
 
 
 @dataclass(frozen=True)
@@ -146,6 +149,12 @@ class EspnListing:
 
     def teams(self) -> Optional[frozenset[str]]:
         return matchup_teams(self.name)
+
+
+@dataclass
+class EspnIndex:
+    by_teams: dict[frozenset[str], list[EspnListing]]
+    by_title: dict[str, list[EspnListing]]
 
 
 def upcoming_days(now: Optional[datetime] = None, count: int = UPCOMING_DAYS) -> list[str]:
@@ -270,43 +279,77 @@ def apply_espn_sports(
     return labeled
 
 
-def espn_sport_for(
-    airing: Airing,
-    indexed: dict[frozenset[str], list[EspnListing]],
-) -> Optional[str]:
+def espn_sport_for(airing: Airing, indexed: EspnIndex) -> Optional[str]:
     if is_studio_show(airing.title) or _skip_title(airing.title):
         return None
+    sport = None
     teams = matchup_teams(airing.title)
-    if not teams:
+    if teams:
+        sport = _sport_from_candidates(airing, indexed.by_teams.get(teams) or [])
+    if not sport and is_espn_plus(airing.station, airing.title):
+        sport = _sport_from_candidates(airing, _title_candidates(indexed, airing.title))
+    if not sport:
         return None
-    candidates = indexed.get(teams) or []
-    if not candidates:
-        return None
-    timed = [item for item in candidates if _within_window(airing.start, item.start)]
-    if timed:
-        best = min(timed, key=lambda item: _start_delta(airing.start, item.start))
-        sport = best.sport
-    else:
-        sports = {item.sport for item in candidates}
-        if len(sports) != 1:
-            return None
-        sport = next(iter(sports))
     current = airing.sport or infer_sport(airing.title, airing.station)
     if current in PROTECTED_SPORTS and sport != current:
         return None
     return sport
 
 
-def _index_listings(
-    listings: Iterable[EspnListing],
-) -> dict[frozenset[str], list[EspnListing]]:
-    indexed: dict[frozenset[str], list[EspnListing]] = {}
+def listing_title_keys(title: str) -> tuple[str, ...]:
+    primary = _title_key(title)
+    if not primary:
+        return ()
+    keys = [primary]
+    court = COURT_KEY_RE.search(primary)
+    if court:
+        court_key = f"COURT {court.group(1)}"
+        if court_key not in keys:
+            keys.append(court_key)
+    return tuple(keys)
+
+
+def _index_listings(listings: Iterable[EspnListing]) -> EspnIndex:
+    by_teams: dict[frozenset[str], list[EspnListing]] = {}
+    by_title: dict[str, list[EspnListing]] = {}
     for item in listings:
         teams = item.teams()
-        if not teams:
-            continue
-        indexed.setdefault(teams, []).append(item)
-    return indexed
+        if teams:
+            by_teams.setdefault(teams, []).append(item)
+        for key in listing_title_keys(item.name):
+            bucket = by_title.setdefault(key, [])
+            if item not in bucket:
+                bucket.append(item)
+    return EspnIndex(by_teams=by_teams, by_title=by_title)
+
+
+def _title_candidates(indexed: EspnIndex, title: str) -> list[EspnListing]:
+    found: list[EspnListing] = []
+    seen: set[int] = set()
+    for key in listing_title_keys(title):
+        for item in indexed.by_title.get(key) or []:
+            marker = id(item)
+            if marker in seen:
+                continue
+            seen.add(marker)
+            found.append(item)
+    return found
+
+
+def _sport_from_candidates(
+    airing: Airing,
+    candidates: list[EspnListing],
+) -> Optional[str]:
+    if not candidates:
+        return None
+    timed = [item for item in candidates if _within_window(airing.start, item.start)]
+    if timed:
+        best = min(timed, key=lambda item: _start_delta(airing.start, item.start))
+        return best.sport
+    sports = {item.sport for item in candidates}
+    if len(sports) != 1:
+        return None
+    return next(iter(sports))
 
 
 def _listing_from_row(row: dict[str, Any]) -> Optional[EspnListing]:
@@ -345,7 +388,7 @@ def map_espn_sport(*labels: str) -> str:
             "Football", "Soccer", "Tennis", "Volleyball", "Baseball", "Basketball",
             "Hockey", "Golf", "Rugby", "Field Hockey", "Water Polo", "Lacrosse",
             "Softball", "Gymnastics", "Swimming", "Track", "Cricket", "Disc Golf",
-            "Horse Racing", "Motorsports", "Combat",
+            "Horse Racing", "Motorsports", "Combat", "Fishing",
         }:
             return cleaned
     for hint, sport in LEAGUE_HINTS:
@@ -408,6 +451,13 @@ def _team_key(name: str) -> str:
     text = re.sub(r"[^A-Z0-9 ]+", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return TEAM_ALIASES.get(text, text)
+
+
+def _title_key(title: str) -> str:
+    text = _strip_title(title)
+    text = SEED_RE.sub("", text)
+    text = RANK_RE.sub("", text)
+    return norm_name(text)
 
 
 def _skip_title(title: str) -> bool:

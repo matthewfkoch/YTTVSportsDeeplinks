@@ -212,6 +212,63 @@ def test_upcoming_day_does_not_relabel_todays_football():
     assert by_title["Harvard vs. UC Davis"] == "Water Polo"
 
 
+def test_espn_plus_uses_schedule_sport_for_named_streams():
+    noon = datetime(2026, 9, 7, 16, 0, tzinfo=timezone.utc)
+    listings = [
+        EspnListing("Court 8", "Tennis", noon),
+        EspnListing("Court 13", "Tennis", noon),
+        EspnListing("2026 US Open Court 4", "Tennis", noon),
+        EspnListing("Mobile Big Game Fishing Classic", "Fishing", noon),
+        EspnListing("Kansas City vs. Drake", "Soccer", noon),
+    ]
+    rows = apply_espn_sports(
+        [
+            _airing("Court 8", "ESPN Unlimited", noon, "Other"),
+            _airing("Court 4", "ESPN Unlimited", noon, "Other"),
+            _airing("Court 18", "ESPN Unlimited", noon, "Other"),
+            _airing("Mobile Big Game Fishing Classic", "ESPN+", noon, "Other"),
+            _airing("Kansas City vs. Drake", "ESPN+", noon),
+            _airing("Princeton vs. La Salle", "ESPN+", noon, "Other"),
+        ],
+        listings,
+    )
+    by_title = {item.title: item.sport for item in rows}
+    assert by_title["Court 8"] == "Tennis"
+    assert by_title["Court 4"] == "Tennis"
+    assert by_title["Court 18"] == "Other"
+    assert by_title["Mobile Big Game Fishing Classic"] == "Fishing"
+    assert by_title["Kansas City vs. Drake"] == "Soccer"
+    assert by_title["Princeton vs. La Salle"] == "Other"
+
+
+def test_parse_keeps_espn_plus_courts_and_fishing():
+    payload = {
+        "data": {
+            "airings": [
+                {
+                    "name": "Court 8",
+                    "startDateTime": "2026-09-07T16:00:00Z",
+                    "program": {"isStudio": False},
+                    "sport": {"name": "Tennis"},
+                    "league": {"name": "US Open"},
+                    "category": {"name": "Tennis"},
+                },
+                {
+                    "name": "Mobile Big Game Fishing Classic",
+                    "startDateTime": "2026-09-07T16:00:00Z",
+                    "program": {"isStudio": False},
+                    "sport": {"name": "Fishing"},
+                    "league": {"name": "Fishing"},
+                    "category": {"name": "Fishing"},
+                },
+            ]
+        }
+    }
+    sports = {item.name: item.sport for item in parse_airings_payload(payload)}
+    assert sports["Court 8"] == "Tennis"
+    assert sports["Mobile Big Game Fishing Classic"] == "Fishing"
+
+
 def test_resolve_sport_keeps_stored_volleyball_over_school_name_football():
     assert infer_sport("Elon vs. Eastern Michigan", "ESPN") == "Football"
     assert resolve_sport("Elon vs. Eastern Michigan", "ESPN", stored="Volleyball") == "Volleyball"

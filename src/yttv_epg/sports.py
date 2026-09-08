@@ -29,8 +29,6 @@ DIGITAL_EXTRA_HINTS = ESPN_PLUS_HINTS + (
     "ACC+",
     "ACC EXTRA",
     "ACC NETWORK EXTRA",
-    "EXTRA",
-    "OVERFLOW",
 )
 
 JUNK_TITLES = {
@@ -53,6 +51,7 @@ STUDIO_SHOW_HINTS = (
     "PREMATCH",
     "MATCH PREVIEW",
     "COACHING LEGENDS",
+    "DAN PATRICK",
     "GAME BREAK",
     "GOAL ZONE",
     "PRESS CONFERENCE",
@@ -110,6 +109,7 @@ SPORT_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
         "DEL MAR",
         "NYRA",
         "AMERICA'S DAY AT THE RACES",
+        "RACE DAY LIVE",
     )),
     ("Football", ("FOOTBALL", "NCAAF", "NFL", "WILD CARD", "SUPER BOWL", "COLLEGE GAMEDAY", "SEC NATION", "ACC HUDDLE")),
     ("Soccer", (
@@ -244,6 +244,10 @@ TENNIS_ROUND_RE = re.compile(
 )
 TENNIS_SEED_RE = re.compile(r"\(\d{1,2}\)\s+\S.+\s+vs", re.I)
 TENNIS_DOUBLES_RE = re.compile(r"\b[\w'.-]+/[\w'.-]+\s+vs", re.I)
+TENNIS_COURT_RE = re.compile(r"^COURT\s+\d+$", re.I)
+
+HOCKEY_NATIONS = ("CZECHIA", "CZECH REPUBLIC", "FINLAND", "SWEDEN", "SLOVAKIA")
+HOCKEY_NATION_STATIONS = ("TRUTV", "TRU TV", "TNT", "NHL NETWORK")
 
 MLB_TEAMS = (
     "YANKEES", "RED SOX", "BLUE JAYS", "ORIOLES", "RAYS", "WHITE SOX", "GUARDIANS",
@@ -376,7 +380,9 @@ def is_espn_plus(station: str, title: str = "") -> bool:
 
 def is_digital_extra(station: str, title: str = "") -> bool:
     blob = norm_name(f"{station} {title}")
-    return any(hint in blob for hint in DIGITAL_EXTRA_HINTS)
+    if any(hint in blob for hint in DIGITAL_EXTRA_HINTS):
+        return True
+    return is_extra_station(station)
 
 
 def is_extra_station(station: str) -> bool:
@@ -512,6 +518,8 @@ def infer_sport(title: str, station: str = "", shelf: str = "") -> str:
             return sport
     if _looks_like_tennis(title):
         return "Tennis"
+    if _international_hockey(title, station):
+        return "Hockey"
     if DAY_ONLY_RE.match(norm_name(title)):
         # NBC Sports /watch/schedule has no extras API. NBCSN Extra "Day N"
         # cards this meet are Kentucky Downs (Days 4/6). Keep the row.
@@ -556,6 +564,8 @@ def resolve_sport(title: str, station: str = "", stored: str = "", shelf: str = 
 
 
 def _looks_like_tennis(title: str) -> bool:
+    if TENNIS_COURT_RE.match(norm_name(title)):
+        return True
     if TENNIS_ROUND_RE.search(title or ""):
         return True
     if TENNIS_SEED_RE.search(title or ""):
@@ -563,6 +573,16 @@ def _looks_like_tennis(title: str) -> bool:
     if TENNIS_DOUBLES_RE.search(title or ""):
         return True
     return False
+
+
+def _international_hockey(title: str, station: str) -> bool:
+    if not is_vs_matchup(title):
+        return False
+    blob = norm_name(title)
+    if not any(nation in blob for nation in HOCKEY_NATIONS):
+        return False
+    padded = f" {norm_name(station)} "
+    return any(f" {hint} " in padded for hint in HOCKEY_NATION_STATIONS)
 
 
 def _has_team(padded: str, teams: tuple[str, ...]) -> bool:
@@ -901,7 +921,13 @@ def visible_events(
 
 def sport_counts(events: Iterable[Any]) -> list[dict[str, int | str]]:
     counts = Counter(getattr(item, "sport", None) or "Other" for item in events)
-    return [{"name": name, "count": count} for name, count in sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))]
+    return [
+        {"name": name, "count": count}
+        for name, count in sorted(
+            counts.items(),
+            key=lambda pair: (pair[0] == "Other", -pair[1], pair[0]),
+        )
+    ]
 
 
 def channel_counts(events: Iterable[Any]) -> list[dict[str, int | str]]:
