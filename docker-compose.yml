@@ -1,0 +1,30 @@
+services:
+  yttv-espn-plus:
+    build: .
+    container_name: yttv-espn-plus
+    ports:
+      - "8095:8095"
+      - "7900:7900"
+    shm_size: "1gb"
+    environment:
+      YTTV_EPG_SECRET: ${YTTV_EPG_SECRET:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://127.0.0.1:8095}
+      TZ: ${TZ:-America/New_York}
+      LANE_COUNT: ${LANE_COUNT:-128}
+      START_CHANNEL: ${START_CHANNEL:-9100}
+      REFRESH_SECONDS: ${REFRESH_SECONDS:-120}
+      HIDDEN_SPORTS: ${HIDDEN_SPORTS:-}
+      HIDDEN_CHANNELS: ${HIDDEN_CHANNELS:-}
+      MAX_HUBS: ${MAX_HUBS:-16}
+      EPG_PAGES: ${EPG_PAGES:-24}
+      HUB_PAGES: ${HUB_PAGES:-20}
+      ADMIN_USER: ${ADMIN_USER:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ENABLE_CHROME: ${ENABLE_CHROME:-1}
+      NOVNC_PUBLIC_URL: ${NOVNC_PUBLIC_URL:-}
+    volumes:
+      - yttv-espn-plus-data:/data
+    restart: unless-stopped
+
+volumes:
+  yttv-espn-plus-data:

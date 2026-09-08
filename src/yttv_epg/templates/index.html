@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ product_name }}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body
+  data-signed-in="{{ 'true' if signed_in else 'false' }}"
+  data-last-refresh="{{ last_refresh_at }}"
+  data-events="{{ event_count }}"
+  data-refreshing="{{ 'true' if refreshing else 'false' }}"
+>
+  <main>
+    <header>
+      <div>
+        <p class="eyebrow">{{ eyebrow }}</p>
+        <h1>{{ product_name }}</h1>
+        <p class="lede">Sports events from YouTube TV, including extras that are not linear channels, with per-event watch links for your tuner. Hide channel families and sports you do not watch. Linear news and entertainment stay out of the guide. Sign in once in the container Chromium window. This service stores encrypted cookies, not your Google password.</p>
+      </div>
+      <div id="session-status" class="status {{ 'ok' if signed_in else 'warn' }}">
+        {% if signed_in and refreshing %}Updating…{% elif signed_in %}Signed in{% else %}Not signed in{% endif %}
+      </div>
+    </header>
+
+    <section class="card" id="auth-card">
+      <h2>YouTube TV session</h2>
+      <div id="idle-auth" {% if signed_in %}hidden{% endif %}>
+        <p class="muted">Google blocks third-party OAuth, so container Chromium runs on a virtual display. Sign in on <strong>tv.youtube.com</strong> (not “YouTube on TV”) with the account that owns YouTube TV. 2FA stays in Google. After that, the profile is reused automatically.</p>
+        {% if chrome_enabled %}
+        <div id="desktop-wrap">
+          <div class="row">
+            <a class="button-link" id="desktop-link" href="{{ novnc_url }}" target="_blank" rel="noopener">Open login desktop</a>
+            <button id="capture-btn" class="secondary" type="button">Save session now</button>
+          </div>
+          <iframe id="desktop-frame" class="desktop-frame" title="YouTube TV login desktop" src="{{ novnc_url }}"></iframe>
+          <p class="muted" id="chrome-note">Waiting for you to finish Google sign-in in the window above…</p>
+        </div>
+        {% endif %}
+        <details class="fallback">
+          <summary>Paste cookies instead</summary>
+          <p class="muted">Use this if Chromium is unavailable. Export a Netscape cookies.txt from a signed-in tv.youtube.com tab. <code>document.cookie</code> is not enough.</p>
+          <textarea id="cookie-text" spellcheck="false" placeholder="# Netscape HTTP Cookie File&#10;.youtube.com	TRUE	/	TRUE	0	SAPISID	…"></textarea>
+          <div class="file-row">
+            <input id="cookie-file" type="file" accept=".txt,.json,text/plain,application/json">
+          </div>
+          <button id="import-btn" type="button">Import session</button>
+        </details>
+      </div>
+      <div id="signed-auth" {% if not signed_in %}hidden{% endif %}>
+        <p>The container Chromium profile and encrypted session stay in the volume. APITuner never sees them.</p>
+        <div class="row">
+          <button id="refresh-btn" type="button">Refresh guide</button>
+          <button id="logout-btn" class="secondary" type="button">Sign out</button>
+        </div>
+      </div>
+      <p class="error" id="auth-error"></p>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <h2>Guide</h2>
+        <dl>
+          <div><dt>Showing</dt><dd>{{ event_count }}</dd></div>
+          <div><dt>All sports</dt><dd>{{ all_event_count }}</dd></div>
+          <div><dt>Non-sports ignored</dt><dd>{{ linear_count }}</dd></div>
+          <div><dt>Lanes used</dt><dd>{{ lanes_used }} / {{ lane_count }}</dd></div>
+          <div><dt>Last refresh</dt><dd id="last-refresh-value">{{ last_refresh }}</dd></div>
+          <div><dt>InnerTube</dt><dd>{{ client or "—" }}</dd></div>
+        </dl>
+        {% if dropped_events %}<p class="error">{{ dropped_events }} overlapping events did not fit. Raise <code>LANE_COUNT</code>.</p>{% endif %}
+        {% if last_error %}<p class="error">{{ last_error }}</p>{% endif %}
+      </article>
+      <article class="card">
+        <h2>Feeds</h2>
+        <ul class="links">
+          <li><a href="/xmltv.xml">XMLTV</a></li>
+          <li><a href="/playlist.m3u">M3U</a></li>
+          <li><a href="/api/export">APITuner JSON</a></li>
+          <li><a href="/whatson/1">Lane 1 now</a></li>
+        </ul>
+        <p class="muted">Point APITuner at <code>{{ public_base_url }}/api/export</code> or import the M3U. Keep this container separate.</p>
+      </article>
+    </section>
+
+    <section class="card">
+      <h2>Channels to include</h2>
+      <p class="muted">Filled chips stay in the guide and tuner lanes. Known families stay grouped (ESPN+, NBC Sports Extra, linear ESPN, FS1). Anything else uses the station name YouTube TV gave it, so you can include or hide that channel directly.</p>
+      <div class="chips" id="channel-chips">
+        {% for channel in channels %}
+        <button type="button" class="chip {% if channel.name in hidden_channels %}off{% else %}on{% endif %}" data-channel="{{ channel.name }}">{{ channel.name }} · {{ channel.count }}</button>
+        {% endfor %}
+      </div>
+      {% if not channels %}
+      <p class="muted">Channel families appear here after a successful guide refresh.</p>
+      {% endif %}
+      {% if hidden_channels %}
+      <p class="row" style="margin-top:0.85rem"><button id="reset-channels" class="secondary" type="button">Show every channel</button></p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2>Sports to include</h2>
+      <p class="muted">Filled chips are in the guide and tuner lanes. Tap one to hide it — for example Volleyball if you never watch it. Times are {{ time_zone }}.</p>
+      <div class="chips" id="sport-chips">
+        {% for sport in sports %}
+        <button type="button" class="chip {% if sport.name in hidden_sports %}off{% else %}on{% endif %}" data-sport="{{ sport.name }}">{{ sport.name }} · {{ sport.count }}</button>
+        {% endfor %}
+      </div>
+      {% if not sports %}
+      <p class="muted">Sports appear here after a successful guide refresh.</p>
+      {% endif %}
+      {% if hidden_sports %}
+      <p class="row" style="margin-top:0.85rem"><button id="reset-filters" class="secondary" type="button">Show every sport</button></p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2>Events</h2>
+      {% if event_groups %}
+      <label class="search-label" for="event-search">Find an event</label>
+      <input id="event-search" type="search" placeholder="Team, sport, or channel" autocomplete="off">
+      {% if shown_count < event_count %}
+      <p class="muted">Showing the next {{ shown_count }} of {{ event_count }}.</p>
+      {% endif %}
+      {% for group in event_groups %}
+      <section class="day-group" data-day-group>
+        <h3>{{ group.heading }}</h3>
+        <table>
+          <thead>
+            <tr><th>Time</th><th>Sport</th><th>Event</th><th>Channel</th><th>Watch</th></tr>
+          </thead>
+          <tbody>
+            {% for event in group.events %}
+            <tr data-event-row data-search="{{ event.search }}">
+              <td>{% if event.live %}<span class="live">LIVE</span> {% endif %}{{ event.clock }}</td>
+              <td>{{ event.sport or "—" }}</td>
+              <td>{{ event.title }}</td>
+              <td>{{ event.station or event.channel or "—" }}{% if event.channel and event.station and event.channel != event.station %}<div class="muted">{{ event.channel }}</div>{% endif %}</td>
+              <td>
+                <a href="{{ event.deeplink }}">Watch</a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+      {% endfor %}
+      {% else %}
+      <p class="muted">No sports events with a YouTube TV watch link in the current filter. Sign in on tv.youtube.com, refresh the guide, or turn a sport or channel back on. Upcoming games appear here once YouTube TV publishes a watch URL.</p>
+      {% endif %}
+    </section>
+  </main>
+  <div id="refresh-toast" class="toast" hidden role="status" aria-live="polite">
+    <span class="toast-spinner" aria-hidden="true"></span>
+    <span id="refresh-toast-text">Refreshing the guide…</span>
+  </div>
+  <script src="/static/app.js?v=refresh-2"></script>
+</body>
+</html>

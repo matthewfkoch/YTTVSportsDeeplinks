@@ -1,0 +1,73 @@
+{
+  "contents": {
+    "epgRenderer": {
+      "paginationRenderer": {
+        "epgPaginationRenderer": {
+          "contents": [
+            {
+              "epgRowRenderer": {
+                "station": {
+                  "epgStationRenderer": {
+                    "icon": {
+                      "accessibility": {
+                        "accessibilityData": { "label": "ESPN" }
+                      }
+                    }
+                  }
+                },
+                "airings": [
+                  {
+                    "epgAiringRenderer": {
+                      "startTime": "1730000000",
+                      "endTime": "1730003600",
+                      "title": { "simpleText": "SportsCenter" },
+                      "navigationEndpoint": {
+                        "watchEndpoint": { "videoId": "bj3v-DQPnNs" }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "epgRowRenderer": {
+                "station": {
+                  "epgStationRenderer": {
+                    "icon": {
+                      "accessibility": {
+                        "accessibilityData": { "label": "ESPN Unlimited" }
+                      }
+                    }
+                  }
+                },
+                "airings": [
+                  {
+                    "epgAiringRenderer": {
+                      "startTime": "1730000000",
+                      "endTime": "1730007200",
+                      "title": { "simpleText": "UConn vs Maryland" },
+                      "navigationEndpoint": {
+                        "watchEndpoint": { "videoId": "YGUvoKVT5qk" }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "contents2": {
+    "richItemRenderer": {
+      "content": {
+        "videoRenderer": {
+          "videoId": "abcdefghijk",
+          "title": { "runs": [{ "text": "US Open Tennis" }] },
+          "upcomingEventData": { "startTime": "1730010000" }
+        }
+      }
+    }
+  }
+}
