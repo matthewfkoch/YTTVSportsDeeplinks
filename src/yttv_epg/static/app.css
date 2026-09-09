@@ -33,6 +33,14 @@ header {
   align-items: flex-start;
   margin-bottom: 1.5rem;
 }
+.brand { display: flex; gap: 0.9rem; align-items: flex-start; min-width: 0; }
+.brand-mark {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  flex-shrink: 0;
+  background: #101218;
+}
 
 h1, h2 { margin: 0 0 0.4rem; }
 .eyebrow { text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.75rem; color: var(--muted); }

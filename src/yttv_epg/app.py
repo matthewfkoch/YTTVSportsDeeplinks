@@ -576,8 +576,12 @@ async def whatson_lane(
 
 @app.get("/xmltv.xml")
 @app.get("/epg.xml")
-async def xmltv_feed() -> Response:
-    body = xmltv(_labeled_assignments(), settings.lane_count)
+async def xmltv_feed(request: Request) -> Response:
+    body = xmltv(
+        _labeled_assignments(),
+        settings.lane_count,
+        base_url=_public_base_url(request),
+    )
     return Response(content=body, media_type="application/xml")
 
 

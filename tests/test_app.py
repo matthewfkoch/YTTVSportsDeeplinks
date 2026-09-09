@@ -24,6 +24,7 @@ def test_dashboard_imports_cookies_not_a_password_or_oauth_form():
         home = client.get("/")
         assert home.status_code == 200
         assert "YTTV Sports Deeplinks" in home.text
+        assert "/static/logo.png" in home.text
         assert "Sports" in home.text
         assert "Channels" in home.text
         assert "When live" not in home.text
@@ -248,5 +249,11 @@ def test_feeds_follow_request_host_when_public_base_is_localhost():
         assert "http://192.168.1.20:8095/api/export" in home.text
         playlist = client.get("/playlist.m3u").text
         assert "http://192.168.1.20:8095/whatson/1" in playlist
+        assert 'tvg-logo="http://192.168.1.20:8095/static/logo.png"' in playlist
+        xml = client.get("/xmltv.xml").text
+        assert '<icon src="http://192.168.1.20:8095/static/logo.png" />' in xml
+        logo = client.get("/static/logo.png")
+        assert logo.status_code == 200
+        assert logo.headers["content-type"].startswith("image/")
         export = client.get("/api/export").json()
         assert export[0]["url"].startswith("http://192.168.1.20:8095/whatson/1")

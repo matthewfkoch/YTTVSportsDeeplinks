@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from xml.sax.saxutils import escape
 
-from yttv_epg.branding import PRODUCT_NAME, SOURCE_NAME
+from yttv_epg.branding import LOGO_PATH, PRODUCT_NAME, SOURCE_NAME
 from yttv_epg.lanes import LaneAssignment
 from yttv_epg.parse import Airing
 
@@ -16,15 +16,22 @@ def lane_name(lane: int) -> str:
     return f"YTTV Sports {lane}"
 
 
-def xmltv(assignments: list[LaneAssignment], lane_count: int) -> str:
+def logo_url(base_url: str) -> str:
+    return f"{base_url.rstrip('/')}{LOGO_PATH}"
+
+
+def xmltv(assignments: list[LaneAssignment], lane_count: int, *, base_url: str = "") -> str:
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         f'<tv generator-info-name="{escape(PRODUCT_NAME)}">',
     ]
+    icon = logo_url(base_url) if base_url else ""
     for lane in range(1, lane_count + 1):
         cid = escape(lane_id(lane))
         lines.append(f'  <channel id="{cid}">')
         lines.append(f"    <display-name>{escape(lane_name(lane))}</display-name>")
+        if icon:
+            lines.append(f'    <icon src="{escape(icon)}" />')
         lines.append("  </channel>")
     for row in assignments:
         if not row.airing.watch_id():
@@ -64,7 +71,8 @@ def m3u(
         )
         lines.append(
             f'#EXTINF:-1 tvg-id="{lane_id(lane)}" tvg-chno="{number}" '
-            f'tvg-name="{lane_name(lane)}" channel-id="{lane_id(lane)}" '
+            f'tvg-name="{lane_name(lane)}" tvg-logo="{logo_url(root)}" '
+            f'channel-id="{lane_id(lane)}" '
             f'package-name="{package_name}" '
             f'alternate-package-name="{alternate_package_name}",'
             f"{lane_name(lane)}"

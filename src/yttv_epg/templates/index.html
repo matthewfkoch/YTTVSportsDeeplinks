@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ product_name }}</title>
+  <link rel="icon" type="image/png" href="/static/logo.png">
+  <link rel="apple-touch-icon" href="/static/logo.png">
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body
@@ -14,10 +16,13 @@
 >
   <main>
     <header>
-      <div>
-        <p class="eyebrow">{{ eyebrow }}</p>
-        <h1>{{ product_name }}</h1>
-        <p class="lede">YouTube TV sports events, published as XMLTV and tuner lanes with a watch link for each listing.</p>
+      <div class="brand">
+        <img class="brand-mark" src="/static/logo.png" width="56" height="56" alt="">
+        <div>
+          <p class="eyebrow">{{ eyebrow }}</p>
+          <h1>{{ product_name }}</h1>
+          <p class="lede">YouTube TV sports events, published as XMLTV and tuner lanes with a watch link for each listing.</p>
+        </div>
       </div>
       <div id="session-status" class="status {{ 'ok' if signed_in else 'warn' }}">
         {% if signed_in and refreshing %}Updating…{% elif signed_in %}Signed in{% else %}Not signed in{% endif %}

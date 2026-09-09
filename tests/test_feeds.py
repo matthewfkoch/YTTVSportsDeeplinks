@@ -22,11 +22,12 @@ def _airing() -> Airing:
 
 def test_xmltv_contains_event_and_deeplink():
     rows = [LaneAssignment(lane=1, airing=_airing())]
-    body = xmltv(rows, lane_count=2)
+    body = xmltv(rows, lane_count=2, base_url="http://192.168.1.10:8095")
     assert 'id="yttv-sports-1"' in body
     assert "UConn vs Maryland" in body
     assert "https://tv.youtube.com/watch/YGUvoKVT5qk" in body
     assert 'channel="yttv-sports-1"' in body
+    assert '<icon src="http://192.168.1.10:8095/static/logo.png" />' in body
 
 
 def test_xmltv_omits_events_without_watch_link():
@@ -57,6 +58,7 @@ def test_m3u_uses_whatson_resolver():
     assert "/whatson/1?format=json" in body
     assert "dynamic_url_json_key=deeplink_url" in body
     assert "tvg-chno=\"9100\"" in body
+    assert 'tvg-logo="http://192.168.1.10:8095/static/logo.png"' in body
 
 
 def test_apituner_export_is_separate_source():

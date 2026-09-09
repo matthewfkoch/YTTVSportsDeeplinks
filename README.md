@@ -41,7 +41,7 @@ If `docker volume ls` shows a different old name, use that as `/from`.
 
 | URL | Use |
 | --- | --- |
-| `/xmltv.xml` | Sports guide (filtered). This is the Channels DVR XMLTV URL. |
+| `/xmltv.xml` | Sports guide (filtered). This is the Channels DVR XMLTV URL. Channel icons use `/static/logo.png`. |
 | `/playlist.m3u` | Virtual lanes (`YTTV Sports 1` …) |
 | `/whatson/{n}` | Current event deeplink (`https://tv.youtube.com/watch/...`) |
 | `/api/export` | APITuner channel JSON |
