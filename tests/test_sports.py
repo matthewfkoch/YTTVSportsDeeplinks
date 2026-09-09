@@ -17,8 +17,45 @@ from yttv_epg.sports import (
 
 def test_movie_at_is_not_a_matchup():
     assert not is_matchup("Night at the Museum")
+    assert not is_matchup("World at War")
     assert is_matchup("East Carolina at Alabama")
     assert is_matchup("Brentford vs. Sunderland")
+
+
+def test_program_titles_are_not_channels_or_events():
+    assert infer_channel("2026 Indiana State") == ""
+    assert infer_channel("2026 Boise State") == ""
+    assert infer_channel("Darlington Recap") == ""
+    assert infer_channel("World at War") == ""
+    assert not is_sports_event("ESPN+", "2026 Indiana State")
+    assert not is_sports_event("ESPN+", "2026 Boise State")
+    assert not is_sports_event("FS1", "Darlington Recap")
+    assert not is_sports_event("World at War", "Episode 1")
+    assert not is_sports_event("History", "World at War")
+    assert is_sports_event("T2", "2026 WTA Cincinnati")
+    assert is_sports_event("ESPN", "Indiana State vs Purdue")
+    assert is_sports_event("FS1", "NASCAR Cup Series at Darlington")
+
+    class Row:
+        def __init__(self, station: str, title: str, sport: str = "Football") -> None:
+            self.sport = sport
+            self.station = station
+            self.title = title
+            self.channel = station
+
+        def watch_id(self) -> str:
+            return "watchidxxxx"
+
+    rows = [
+        Row("2026 Indiana State", "2026 Indiana State"),
+        Row("2026 Boise State", "Boise State season preview"),
+        Row("Darlington Recap", "Darlington Recap", "Motorsports"),
+        Row("World at War", "World at War", "Other"),
+        Row("ESPN", "Indiana State vs Purdue"),
+    ]
+    visible = visible_events(rows, require_watch_link=True)
+    assert [item.station for item in visible] == ["ESPN"]
+    assert {item["name"] for item in channel_counts(visible)} == {"ESPN"}
 
 
 def test_extras_and_volleyball_are_sports_events():
@@ -95,6 +132,21 @@ def test_extras_and_volleyball_are_sports_events():
     assert is_extra_station("NBC Sports Extra")
     assert not is_extra_station("ESPN")
     assert parse_sport_list("Volleyball, Field Hockey") == ["Volleyball", "Field Hockey"]
+
+
+def test_sports_event_short_circuit_still_rejects_studio_wildlife_and_replays():
+    assert not is_sports_event("NBCSN Extra", "The Dan Patrick Show")
+    assert not is_sports_event("Nat Geo Wild", "Cougars vs Wolves")
+    assert not is_sports_event("NFL Network", "2025: Chicago Bears vs. San Francisco 49ers")
+    assert not is_sports_event("NFL Network", "2025 NFC Divisional: Los Angeles Rams vs. Chicago Bears")
+    assert is_sports_event("NBCSN Extra", "Brentford vs. Sunderland")
+    assert is_sports_event("ESPN+", "Santa Clara vs. Hofstra")
+
+
+def test_cfb_teams_are_unique():
+    from yttv_epg.sports import CFB_TEAMS
+
+    assert len(CFB_TEAMS) == len(set(CFB_TEAMS))
 
 
 def test_visible_events_hides_sports():

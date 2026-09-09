@@ -21,8 +21,10 @@ const lastRefreshLabel = lastRefreshValue?.textContent || "—";
 
 const boot = {
   signedIn: document.body.dataset.signedIn === "true",
+  sessionExpired: document.body.dataset.sessionExpired === "true",
   lastRefresh: document.body.dataset.lastRefresh || "",
   events: document.body.dataset.events || "",
+  allEvents: document.body.dataset.allEvents || "",
   lastError: null,
   primed: false,
 };
@@ -53,12 +55,22 @@ function setUserBusy(active, message) {
   else hideToast();
 }
 
-function setBackgroundUpdating(active) {
-  if (guideBusy) return;
-  if (sessionStatus && boot.signedIn) {
-    sessionStatus.textContent = active ? "Updating…" : "Signed in";
+function paintSessionStatus(refreshing) {
+  if (!sessionStatus) return;
+  if (boot.sessionExpired) {
+    sessionStatus.textContent = "Session expired";
+    sessionStatus.className = "status err";
+    return;
+  }
+  if (boot.signedIn) {
+    sessionStatus.textContent = refreshing ? "Updating…" : "Signed in";
     sessionStatus.className = "status ok";
   }
+}
+
+function setBackgroundUpdating(active) {
+  if (guideBusy) return;
+  paintSessionStatus(active);
   if (lastRefreshValue) {
     lastRefreshValue.textContent = active ? "Updating…" : lastRefreshLabel;
   }
@@ -146,7 +158,9 @@ async function watchChromeLogin() {
     return;
   }
   const note = document.getElementById("chrome-note");
+  const waitForFreshLogin = boot.sessionExpired;
   let opened = false;
+  let sawSignedOut = !waitForFreshLogin;
   while (idleAuth && !idleAuth.hidden) {
     const statusResponse = await fetch("/api/auth/chrome/status");
     const status = statusResponse.ok ? await statusResponse.json() : { available: false };
@@ -154,14 +168,21 @@ async function watchChromeLogin() {
       if (note) {
         note.textContent = "The in-container browser is not ready yet. Wait a moment, or paste cookies below.";
       }
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await new Promise((resolve) => setTimeout(resolve, 15000));
       continue;
     }
     if (!opened) {
       await fetch("/api/auth/chrome/open", { method: "POST" });
       opened = true;
     }
-    if (status.signed_in) {
+    if (!status.signed_in) {
+      sawSignedOut = true;
+      if (note) note.textContent = "Waiting for you to finish signing in…";
+    } else if (!sawSignedOut) {
+      if (note) {
+        note.textContent = "This browser still has the old cookies. Sign in again, then click Save session.";
+      }
+    } else {
       if (note) note.textContent = "Signed in. Saving the session…";
       showToast("Signed in. Saving the session and refreshing the guide…");
       const capture = await fetch("/api/auth/chrome/capture", { method: "POST" });
@@ -171,23 +192,121 @@ async function watchChromeLogin() {
       }
       hideToast();
       errorEl.textContent = await readError(capture);
-    } else if (note) {
-      note.textContent = "Waiting for you to finish signing in…";
     }
-    await new Promise((resolve) => setTimeout(resolve, 2500));
+    await new Promise((resolve) => setTimeout(resolve, 15000));
   }
 }
 
 watchChromeLogin();
 
-function postFilter(body, message) {
-  runAction(message, () =>
-    fetch("/api/filters", {
+function chipOn(button, on) {
+  button.classList.toggle("on", on);
+  button.classList.toggle("off", !on);
+}
+
+function snapshotChipState() {
+  return [...document.querySelectorAll("#sport-chips .chip, #channel-chips .chip")].map((el) => ({
+    el,
+    on: el.classList.contains("on"),
+  }));
+}
+
+function restoreChipState(snapshot) {
+  snapshot.forEach(({ el, on }) => chipOn(el, on));
+}
+
+function applyOptimisticFilter(body) {
+  if (body.toggle) {
+    const button = document.querySelector(`#sport-chips [data-sport="${body.toggle}"]`);
+    if (button) chipOn(button, button.classList.contains("off"));
+  }
+  if (body.toggle_channel) {
+    const button = document.querySelector(`#channel-chips [data-channel="${body.toggle_channel}"]`);
+    if (button) chipOn(button, button.classList.contains("off"));
+  }
+  if (Array.isArray(body.hidden)) {
+    const blocked = new Set(body.hidden);
+    document.querySelectorAll("#sport-chips [data-sport]").forEach((button) => {
+      chipOn(button, !blocked.has(button.dataset.sport));
+    });
+  }
+  if (Array.isArray(body.hidden_channels)) {
+    const blocked = new Set(body.hidden_channels);
+    document.querySelectorAll("#channel-chips [data-channel]").forEach((button) => {
+      chipOn(button, !blocked.has(button.dataset.channel));
+    });
+  }
+}
+
+function hiddenNames(selector, attr) {
+  return new Set(
+    [...document.querySelectorAll(selector)]
+      .filter((el) => el.classList.contains("off"))
+      .map((el) => el.getAttribute(attr))
+      .filter(Boolean),
+  );
+}
+
+function applyEventVisibility() {
+  const query = (searchEl?.value || "").trim().toLowerCase();
+  const sports = hiddenNames("#sport-chips .chip.off", "data-sport");
+  const channels = hiddenNames("#channel-chips .chip.off", "data-channel");
+  let shown = 0;
+  document.querySelectorAll("[data-event-row]").forEach((row) => {
+    const haystack = row.getAttribute("data-search") || "";
+    const sport = row.getAttribute("data-sport") || "";
+    const channel = row.getAttribute("data-channel") || "";
+    const hide =
+      Boolean(query && !haystack.includes(query)) ||
+      (sport && sports.has(sport)) ||
+      (channel && channels.has(channel));
+    row.hidden = hide;
+    if (!hide) shown += 1;
+  });
+  document.querySelectorAll("[data-day-group]").forEach((group) => {
+    const visible = [...group.querySelectorAll("[data-event-row]")].some((row) => !row.hidden);
+    group.hidden = !visible;
+  });
+  const empty = document.getElementById("events-empty");
+  if (empty) {
+    empty.hidden = shown > 0 || !document.querySelector("[data-event-row]");
+  }
+}
+
+async function postFilter(body, message) {
+  const previous = snapshotChipState();
+  applyOptimisticFilter(body);
+  applyEventVisibility();
+  errorEl.textContent = "";
+  actionInFlight = true;
+  showToast(message);
+  try {
+    const response = await fetch("/api/filters", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    }),
-  );
+    });
+    if (!response.ok) {
+      restoreChipState(previous);
+      applyEventVisibility();
+      errorEl.textContent = await readError(response);
+      hideToast();
+      return;
+    }
+    const data = await response.json();
+    const countEl = document.getElementById("event-count");
+    if (countEl && data.events != null) countEl.textContent = data.events;
+    boot.events = String(data.events ?? boot.events);
+    boot.allEvents = String(data.all_events ?? boot.allEvents);
+    hideToast();
+  } catch (exc) {
+    restoreChipState(previous);
+    applyEventVisibility();
+    errorEl.textContent = exc.message || "Request failed";
+    hideToast();
+  } finally {
+    actionInFlight = false;
+  }
 }
 
 document.getElementById("sport-chips")?.addEventListener("click", (event) => {
@@ -211,7 +330,7 @@ document.getElementById("select-sports")?.addEventListener("click", () => {
 });
 
 document.getElementById("unselect-sports")?.addEventListener("click", () => {
-  postFilter({ hidden: listedNames("[data-sport]", "data-sport") }, "Excluding all sports…");
+  postFilter({ hidden: listedNames("#sport-chips [data-sport]", "data-sport") }, "Excluding all sports…");
 });
 
 document.getElementById("select-channels")?.addEventListener("click", () => {
@@ -219,29 +338,22 @@ document.getElementById("select-channels")?.addEventListener("click", () => {
 });
 
 document.getElementById("unselect-channels")?.addEventListener("click", () => {
-  postFilter({ hidden_channels: listedNames("[data-channel]", "data-channel") }, "Excluding all stations…");
+  postFilter({ hidden_channels: listedNames("#channel-chips [data-channel]", "data-channel") }, "Excluding all stations…");
 });
 
 searchEl?.addEventListener("input", () => {
-  const query = searchEl.value.trim().toLowerCase();
   sessionStorage.setItem(SEARCH_KEY, searchEl.value);
-  document.querySelectorAll("[data-event-row]").forEach((row) => {
-    const haystack = row.getAttribute("data-search") || "";
-    row.hidden = Boolean(query) && !haystack.includes(query);
-  });
-  document.querySelectorAll("[data-day-group]").forEach((group) => {
-    const visible = [...group.querySelectorAll("[data-event-row]")].some((row) => !row.hidden);
-    group.hidden = !visible;
-  });
+  applyEventVisibility();
 });
 
 function statusChanged(status) {
   const lastRefresh = status.last_refresh || "";
   const lastError = status.last_error || "";
   if (status.signed_in !== boot.signedIn) return true;
+  if (Boolean(status.session_expired) !== boot.sessionExpired) return true;
   if (lastRefresh !== boot.lastRefresh) return true;
   if (boot.lastError !== null && lastError !== boot.lastError) return true;
-  if (!status.refreshing && String(status.events ?? "") !== String(boot.events)) return true;
+  if (!status.refreshing && String(status.all_events ?? "") !== String(boot.allEvents)) return true;
   return false;
 }
 
@@ -249,7 +361,9 @@ function snapshotStatus(status) {
   boot.lastError = status.last_error || "";
   boot.lastRefresh = status.last_refresh || boot.lastRefresh;
   boot.events = String(status.events ?? boot.events);
+  boot.allEvents = String(status.all_events ?? boot.allEvents);
   boot.signedIn = Boolean(status.signed_in);
+  boot.sessionExpired = Boolean(status.session_expired);
   boot.primed = true;
 }
 
@@ -279,8 +393,9 @@ async function pollStatus() {
 }
 
 restoreView();
+applyEventVisibility();
 pollStatus();
-setInterval(pollStatus, 3000);
+setInterval(pollStatus, 15000);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") pollStatus();
 });

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
@@ -57,9 +58,13 @@ class MineError(RuntimeError):
     pass
 
 
+def session_expired_message(text: str | None) -> bool:
+    lowered = (text or "").lower()
+    return "session expired" in lowered or "http 401" in lowered or "http 403" in lowered
+
+
 def _session_expired(exc: Exception) -> bool:
-    text = str(exc).lower()
-    return "session expired" in text or "http 401" in text or "http 403" in text
+    return session_expired_message(str(exc))
 
 
 @dataclass
@@ -74,6 +79,28 @@ class InnerTubeClient:
     def __init__(self, http: httpx.AsyncClient) -> None:
         self.http = http
         self.visitor_data = ""
+        self._visitor_lock = asyncio.Lock()
+        self._visitor_frozen = False
+        self._sema: Optional[asyncio.Semaphore] = None
+        self._sema_loop: Optional[asyncio.AbstractEventLoop] = None
+
+    def _http_sema(self) -> asyncio.Semaphore:
+        loop = asyncio.get_running_loop()
+        n = max(1, int(settings.mine_concurrency))
+        if self._sema is None or self._sema_loop is not loop:
+            self._sema = asyncio.Semaphore(n)
+            self._sema_loop = loop
+        return self._sema
+
+    async def _set_visitor(self, visitor: str) -> None:
+        async with self._visitor_lock:
+            if self._visitor_frozen and self.visitor_data:
+                return
+            self.visitor_data = visitor
+
+    async def _freeze_visitor(self, frozen: bool) -> None:
+        async with self._visitor_lock:
+            self._visitor_frozen = frozen
 
     async def probe(self, session: SavedSession) -> str:
         errors: list[str] = []
@@ -88,13 +115,16 @@ class InnerTubeClient:
 
     async def mine(self, session: SavedSession, fallback_minutes: int = 180) -> MineResult:
         errors: list[str] = []
-        for client in CLIENTS:
-            result = await self._mine_client(session, client, fallback_minutes, errors)
-            if result is not None:
-                return result
-        raise MineError(
-            errors[0] if errors else "No InnerTube browse response contained watch links."
-        )
+        try:
+            for client in CLIENTS:
+                result = await self._mine_client(session, client, fallback_minutes, errors)
+                if result is not None:
+                    return result
+            raise MineError(
+                errors[0] if errors else "No InnerTube browse response contained watch links."
+            )
+        finally:
+            await self._freeze_visitor(False)
 
     async def _mine_client(
         self,
@@ -104,6 +134,7 @@ class InnerTubeClient:
         errors: list[str],
     ) -> Optional[MineResult]:
         payloads: list[tuple[str, dict[str, Any]]] = []
+        await self._freeze_visitor(False)
         try:
             epg = await self._browse_all(
                 session, client, "FEunplugged_epg", max_pages=settings.epg_pages
@@ -114,31 +145,47 @@ class InnerTubeClient:
                 return None
             return await self._mine_fallbacks(session, client, fallback_minutes, errors)
         payloads.append(("FEunplugged_epg", epg))
+        await self._freeze_visitor(True)
         hubs = discover_event_hubs(epg) or [ESPN_HUB_FALLBACK]
-        for hub_id in hubs[: settings.max_hubs]:
-            try:
-                payloads.extend(await self._mine_hub(session, client, hub_id))
-            except MineError as exc:
-                errors.append(str(exc))
+        hub_results = await asyncio.gather(
+            *[self._mine_hub(session, client, hub_id) for hub_id in hubs[: settings.max_hubs]],
+            return_exceptions=True,
+        )
+        if _abort_if_expired(hub_results, errors):
+            return None
+        for item in hub_results:
+            if isinstance(item, Exception):
+                errors.append(str(item))
                 continue
+            payloads.extend(item)
         seen_browses = {browse_id.split(":")[0] for browse_id, _ in payloads}
+        chip_jobs: list[tuple[str, str, Any]] = []
         for chip in discover_sports_chips(epg):
             browse_id = str(chip.get("browse_id") or "")
             if not browse_id or browse_id in seen_browses or browse_id.startswith("UC"):
                 continue
-            try:
-                extra = await self._browse_all(
+            seen_browses.add(browse_id)
+            chip_jobs.append((browse_id, str(chip.get("title") or "sports"), chip))
+        chip_results = await asyncio.gather(
+            *[
+                self._browse_all(
                     session,
                     client,
                     browse_id,
                     max_pages=settings.hub_pages,
                     params=str(chip.get("params") or "") or None,
                 )
-            except MineError as exc:
-                errors.append(str(exc))
+                for browse_id, _title, chip in chip_jobs
+            ],
+            return_exceptions=True,
+        )
+        if _abort_if_expired(chip_results, errors):
+            return None
+        for (browse_id, title, _chip), extra in zip(chip_jobs, chip_results):
+            if isinstance(extra, Exception):
+                errors.append(str(extra))
                 continue
-            seen_browses.add(browse_id)
-            payloads.append((f"{browse_id}:{chip.get('title') or 'sports'}", extra))
+            payloads.append((f"{browse_id}:{title}", extra))
         airings = merge_airings(
             airing
             for browse_id, payload in payloads
@@ -148,7 +195,13 @@ class InnerTubeClient:
                 source=f"{client['name']}:{browse_id}",
             )
         )
-        airings = await self.resolve_soon(session, client, airings)
+        try:
+            airings = await self.resolve_soon(session, client, airings)
+        except MineError as exc:
+            errors.append(str(exc))
+            if _session_expired(exc):
+                return None
+            raise
         if airings:
             seen_ids: list[str] = []
             for browse_id, _ in payloads:
@@ -175,6 +228,7 @@ class InnerTubeClient:
         )
         payloads: list[tuple[str, dict[str, Any]]] = [(hub_id, first)]
         seen: set[tuple[str, str, str]] = {(hub_id, "", "")}
+        tab_jobs: list[tuple[str, Any]] = []
         for tab in discover_browse_tabs(first):
             browse_id = str(tab.get("browse_id") or hub_id)
             params = str(tab.get("params") or "")
@@ -188,26 +242,40 @@ class InnerTubeClient:
             if tab.get("selected") and not params and not continuation:
                 continue
             seen.add(key)
-            try:
-                if continuation and not params:
-                    extra = await self._browse_all(
-                        session,
-                        client,
-                        browse_id,
-                        max_pages=settings.hub_pages,
-                        continuation=continuation,
-                    )
-                else:
-                    extra = await self._browse_all(
-                        session,
-                        client,
-                        browse_id,
-                        max_pages=settings.hub_pages,
-                        params=params or None,
-                    )
-            except MineError:
-                continue
             label = f"{browse_id}:{title}" if title else browse_id
+            if continuation and not params:
+                tab_jobs.append(
+                    (
+                        label,
+                        self._browse_all(
+                            session,
+                            client,
+                            browse_id,
+                            max_pages=settings.hub_pages,
+                            continuation=continuation,
+                        ),
+                    )
+                )
+            else:
+                tab_jobs.append(
+                    (
+                        label,
+                        self._browse_all(
+                            session,
+                            client,
+                            browse_id,
+                            max_pages=settings.hub_pages,
+                            params=params or None,
+                        ),
+                    )
+                )
+        tab_results = await asyncio.gather(*(job for _label, job in tab_jobs), return_exceptions=True)
+        expired = next((item for item in tab_results if isinstance(item, Exception) and _session_expired(item)), None)
+        if expired is not None:
+            raise expired if isinstance(expired, MineError) else MineError(str(expired))
+        for (label, _job), extra in zip(tab_jobs, tab_results):
+            if isinstance(extra, Exception):
+                continue
             payloads.append((label, extra))
         return payloads
 
@@ -278,22 +346,35 @@ class InnerTubeClient:
     ) -> list:
         now = datetime.now(timezone.utc)
         cutoff = now + timedelta(hours=within_hours)
-        used = 0
-        out: list[Airing] = []
+        pending: list[Airing] = []
         for item in airings:
             if not isinstance(item, Airing):
                 continue
             if item.watch_id() or not item.entity_id:
-                out.append(item)
                 continue
             if not item.live and item.start > cutoff:
-                out.append(item)
                 continue
-            if used >= limit:
-                out.append(item)
+            if len(pending) >= limit:
                 continue
-            out.append(await self.resolve_watch(session, client, item))
-            used += 1
+            pending.append(item)
+        if not pending:
+            return [item for item in airings if isinstance(item, Airing)]
+        resolved = await asyncio.gather(
+            *[self.resolve_watch(session, client, item) for item in pending],
+            return_exceptions=True,
+        )
+        expired = next((item for item in resolved if isinstance(item, Exception) and _session_expired(item)), None)
+        if expired is not None:
+            raise expired if isinstance(expired, MineError) else MineError(str(expired))
+        by_id = {
+            id(src): (item if isinstance(item, Airing) else src)
+            for src, item in zip(pending, resolved)
+        }
+        out: list[Airing] = []
+        for item in airings:
+            if not isinstance(item, Airing):
+                continue
+            out.append(by_id.get(id(item), item))
         return out
 
     async def resolve_watch(
@@ -309,7 +390,9 @@ class InnerTubeClient:
             return airing
         try:
             payload = await self._browse(session, client, body={"browseId": entity})
-        except MineError:
+        except MineError as exc:
+            if _session_expired(exc):
+                raise
             return airing
         for found in parse_browse(payload, source=airing.source):
             watch = found.watch_id()
@@ -354,7 +437,8 @@ class InnerTubeClient:
         headers = innertube_headers(session.cookies, client)
         if self.visitor_data:
             headers["X-Goog-Visitor-Id"] = self.visitor_data
-        response = await self.http.post(url, json=payload, headers=headers, timeout=45)
+        async with self._http_sema():
+            response = await self.http.post(url, json=payload, headers=headers, timeout=45)
         if response.status_code in {401, 403}:
             raise MineError("YTTV session expired. Sign in again on tv.youtube.com.")
         if response.status_code >= 400:
@@ -371,12 +455,20 @@ class InnerTubeClient:
             else None
         )
         if isinstance(visitor, str) and visitor:
-            self.visitor_data = visitor
+            await self._set_visitor(visitor)
         error = data.get("error")
         if isinstance(error, dict):
             message = error.get("message") or error.get("status") or "InnerTube error"
             raise MineError(str(message))
         return data
+
+
+def _abort_if_expired(results: list[Any], errors: list[str]) -> bool:
+    for item in results:
+        if isinstance(item, Exception) and _session_expired(item):
+            errors.append(str(item))
+            return True
+    return False
 
 
 def _http_error(name: str, url: str, response: httpx.Response) -> str:

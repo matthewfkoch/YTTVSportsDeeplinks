@@ -241,6 +241,47 @@ def test_date_secondary_is_not_a_channel():
     assert airings[0].title == "Best of NBA Inside Stuff"
 
 
+def test_year_school_and_recap_secondaries_are_not_channels():
+    year_school = {
+        "unpluggedVideoRenderer": {
+            "navigationEndpoint": {"watchEndpoint": {"videoId": "yearschool1"}},
+            "primaryText": {"runs": [{"text": "Indiana State vs Purdue"}]},
+            "secondaryText": {"runs": [{"text": "2026 Indiana State"}]},
+            "startTimeSeconds": "1788618300",
+            "endTimeSeconds": "1788625500",
+        }
+    }
+    recap = {
+        "unpluggedVideoRenderer": {
+            "navigationEndpoint": {"watchEndpoint": {"videoId": "darlrecapxx"}},
+            "primaryText": {"runs": [{"text": "NASCAR Cup Series at Darlington"}]},
+            "secondaryText": {"runs": [{"text": "Darlington Recap"}]},
+            "startTimeSeconds": "1788618300",
+            "endTimeSeconds": "1788625500",
+        }
+    }
+    war = {
+        "unpluggedVideoRenderer": {
+            "navigationEndpoint": {"watchEndpoint": {"videoId": "worldatwar1"}},
+            "primaryText": {"runs": [{"text": "World at War"}]},
+            "secondaryText": {"runs": [{"text": "World at War"}]},
+            "startTimeSeconds": "1788618300",
+            "endTimeSeconds": "1788625500",
+        }
+    }
+    year_event = parse_browse(year_school, fallback_minutes=60)[0]
+    assert year_event.station == ""
+    assert year_event.channel == ""
+    recap_event = parse_browse(recap, fallback_minutes=60)[0]
+    assert recap_event.station == ""
+    assert recap_event.channel == ""
+    war_airings = parse_browse(war, fallback_minutes=60)
+    assert war_airings
+    assert war_airings[0].kind != "event"
+    assert war_airings[0].station == ""
+    assert war_airings[0].channel == ""
+
+
 def test_date_then_network_keeps_network():
     payload = {
         "unpluggedVideoRenderer": {
@@ -467,3 +508,33 @@ def test_upcoming_tab_continuation_and_sports_chip():
     chips = discover_sports_chips(payload)
     assert chips[0]["browse_id"] == "FEunplugged_chips"
     assert chips[0]["params"] == "sports-params"
+
+
+def test_same_matchup_on_different_days_is_kept():
+    from datetime import timedelta
+
+    from yttv_epg.parse import Airing, merge_airings
+
+    start = datetime(2026, 9, 5, 16, 0, tzinfo=timezone.utc)
+    first = Airing(
+        video_id="saturdaygm1",
+        title="East Carolina at Alabama",
+        station="ABC 7",
+        kind="event",
+        start=start,
+        end=start + timedelta(hours=3),
+        deeplink="https://tv.youtube.com/watch/saturdaygm1",
+        channel="ABC",
+    )
+    second = Airing(
+        video_id="sundaygame1",
+        title="East Carolina at Alabama",
+        station="ESPN",
+        kind="event",
+        start=start + timedelta(hours=24),
+        end=start + timedelta(hours=27),
+        deeplink="https://tv.youtube.com/watch/sundaygame1",
+        channel="ESPN",
+    )
+    merged = merge_airings([first, second])
+    assert {item.video_id for item in merged} == {"saturdaygm1", "sundaygame1"}

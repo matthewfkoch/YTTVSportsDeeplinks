@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from datetime import datetime, timezone
+from functools import lru_cache
 from typing import Any, Iterable
 
 MONTH_DAY_RE = re.compile(
@@ -16,6 +17,7 @@ MATCHUP_VS_RE = re.compile(r"\s+vs\.?\s+", re.I)
 MATCHUP_AT_RE = re.compile(r"\s+at\s+", re.I)
 DAY_ONLY_RE = re.compile(r"^DAY\s+\d+$", re.I)
 PAST_SEASON_RE = re.compile(r"^(20\d{2})(?:\s*:|\s+(?:NFC|AFC)\b)")
+YEAR_PREFIX_RE = re.compile(r"^(20\d{2})\b")
 
 ESPN_PLUS_HINTS = (
     "ESPN+",
@@ -71,6 +73,10 @@ STUDIO_SHOW_HINTS = (
     "ESTA SEMANA",
     " EN 60",
     "HUDDLE",
+    "RECAP",
+    "WRAP UP",
+    "WRAP-UP",
+    "WORLD AT WAR",
 )
 
 MOVIE_AT_HINTS = (
@@ -78,6 +84,7 @@ MOVIE_AT_HINTS = (
     "DAY AT THE MUSEUM",
     "LIVE AT ROCKPALAST",
     "LIVE AT WESTFALENHALLE",
+    "WORLD AT WAR",
 )
 
 SPORT_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -340,6 +347,7 @@ CFB_TEAMS = (
     "AUBURN", "ALABAMA", "TEXAS", "HOUSTON", "TULSA", "NAVY", "ARMY", "DUKE",
     "SYRACUSE", "PITTSBURGH", "WEST VIRGINIA", "COASTAL CAROLINA",
 )
+CFB_TEAMS = tuple(dict.fromkeys(CFB_TEAMS))
 
 CHANNEL_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("ESPN+", ("ESPN+", "ESPN PLUS", "ESPN UNLIMITED", "ES • ESPN+")),
@@ -373,6 +381,7 @@ CHANNEL_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 
+@lru_cache(maxsize=8192)
 def norm_name(value: str) -> str:
     return re.sub(r"\s+", " ", (value or "").replace("®", "").strip().upper())
 
@@ -389,6 +398,7 @@ def is_digital_extra(station: str, title: str = "") -> bool:
     return is_extra_station(station)
 
 
+@lru_cache(maxsize=8192)
 def is_extra_station(station: str) -> bool:
     label = f" {norm_name(station)} "
     if "OVERFLOW" in label:
@@ -428,6 +438,13 @@ def is_junk(title: str, station: str = "") -> bool:
     past = PAST_SEASON_RE.match(title_u)
     if past and int(past.group(1)) < datetime.now(timezone.utc).year:
         return True
+    year_prefix = YEAR_PREFIX_RE.match(title_u)
+    if year_prefix:
+        year = int(year_prefix.group(1))
+        if year < datetime.now(timezone.utc).year:
+            return True
+        if not is_matchup(title) and infer_sport(title, station) in {"", "Other", "Studio"}:
+            return True
     station_u = norm_name(station)
     if station_u and title_u == station_u and not is_matchup(title):
         return True
@@ -445,6 +462,7 @@ def is_matchup(title: str) -> bool:
     return not any(hint in upper for hint in MOVIE_AT_HINTS)
 
 
+@lru_cache(maxsize=8192)
 def infer_channel(station: str, title: str = "") -> str:
     station_pad = f" {norm_name(station)} "
     combined = f" {norm_name(station)} {norm_name(title)} "
@@ -468,10 +486,15 @@ def is_unusable_channel_label(label: str) -> bool:
     text = _channel_label(label)
     if not text:
         return False
-    padded = f" {norm_name(text)} "
+    upper = norm_name(text)
+    padded = f" {upper} "
     if any(token in padded for token in (" AM ", " PM ", " TODAY ", " TOMORROW ", " MIN LEFT ", " STARTS ")):
         return True
-    if "SEASON PREVIEW" in padded:
+    if "SEASON PREVIEW" in padded or " RECAP " in padded or " WORLD AT WAR " in padded:
+        return True
+    if YEAR_PREFIX_RE.match(upper):
+        return True
+    if is_studio_show(text):
         return True
     return bool(MONTH_DAY_RE.match(text))
 
@@ -516,6 +539,7 @@ def is_at_matchup(title: str) -> bool:
     return bool(is_matchup(title) and MATCHUP_AT_RE.search(title) and not is_vs_matchup(title))
 
 
+@lru_cache(maxsize=8192)
 def infer_sport(title: str, station: str = "", shelf: str = "") -> str:
     blob = norm_name(f"{shelf} {station} {title}")
     padded = f" {blob} "
@@ -825,6 +849,7 @@ NON_SPORTS_COMPACT = {
 }
 
 
+@lru_cache(maxsize=8192)
 def is_non_sports_station(station: str) -> bool:
     label = norm_name(station)
     if not label:
@@ -850,6 +875,7 @@ def is_non_sports_station(station: str) -> bool:
     return False
 
 
+@lru_cache(maxsize=8192)
 def is_studio_show(title: str) -> bool:
     blob = norm_name(title)
     if not blob:
@@ -858,18 +884,25 @@ def is_studio_show(title: str) -> bool:
 
 
 def is_sports_event(station: str, title: str, sport: str = "", tab: str = "") -> bool:
+    year = datetime.now(timezone.utc).year
+    return _is_sports_event_cached(station, title, sport or "", tab or "", year)
+
+
+@lru_cache(maxsize=8192)
+def _is_sports_event_cached(station: str, title: str, sport: str, tab: str, year: int) -> bool:
+    _ = year
     if is_junk(title, station) or is_non_sports_station(station) or is_studio_show(title):
-        return False
-    own_sport = infer_sport(title, station)
-    if own_sport == "Studio":
         return False
     if is_extra_station(station) or is_digital_extra(station, title):
         return True
     if is_matchup(title):
         return True
+    own_sport = infer_sport(title, station)
+    if own_sport == "Studio":
+        return False
     if own_sport and own_sport not in {"", "Other"}:
         return True
-    tab_u = (tab or "").strip().upper()
+    tab_u = tab.strip().upper()
     if tab_u in {"LIVE", "UPCOMING", "SCHEDULE", "EVENTS"} and sport and sport not in {"", "Other"}:
         return True
     if is_sports_hub_label(station) and sport and sport not in {"", "Other", "Studio"}:

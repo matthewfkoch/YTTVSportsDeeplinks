@@ -67,7 +67,9 @@ Upcoming events often have no watch ID until they are close to air. Those stay o
 | `HIDDEN_CHANNELS` | Comma-separated channel families to hide on first run (`ESPN+,NBC Sports Extra`) |
 | `MAX_HUBS` | How many sports network hubs to mine (default 16) |
 | `EPG_PAGES` / `HUB_PAGES` | How far to paginate the linear grid and hub schedules |
-| `REFRESH_SECONDS` | How often to re-mine the guide and refresh Chromium cookies |
+| `REFRESH_SECONDS` | How often to refresh ESPN labels and resolve missing watch links (default 60). If this is the only interval you set, full mines still use `FULL_MINE_SECONDS`. |
+| `FULL_MINE_SECONDS` | How often to re-mine the YouTube TV guide (default 300). Manual Refresh always does a full mine. |
+| `MINE_CONCURRENCY` | Max parallel InnerTube hub/resolve requests (default 4). Continuation pages stay serial. |
 | `ENABLE_CHROME` | Run in-container Chromium (default `1`) |
 | `NOVNC_PUBLIC_URL` | Override the login-desktop iframe URL |
 | `ADMIN_USER` / `ADMIN_PASSWORD` | HTTP basic auth on the dashboard only |

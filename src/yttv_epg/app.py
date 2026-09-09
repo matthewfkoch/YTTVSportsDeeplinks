@@ -24,7 +24,7 @@ from yttv_epg.config import settings
 from yttv_epg.display import format_refresh, group_events_for_ui, local_tz
 from yttv_epg.espn_schedule import apply_espn_sports, fetch_espn_schedule
 from yttv_epg.feeds import apituner_export, m3u, whatson_payload, xmltv
-from yttv_epg.innertube import CLIENTS, InnerTubeClient, MineError
+from yttv_epg.innertube import CLIENTS, InnerTubeClient, MineError, session_expired_message
 from yttv_epg.lanes import LaneAssignment, pack_lanes, whatson
 from yttv_epg.parse import Airing, merge_airings
 from yttv_epg.session import CookieError, parse_cookie_text, require_youtube_tv_cookies
@@ -54,6 +54,8 @@ class State:
         self.session: Optional[SavedSession] = self.store.load()
         self.espn_listings: list = []
         self.espn_fetched_at: Optional[datetime] = None
+        self.lane_assignments: Optional[list[LaneAssignment]] = None
+        self.last_full_mine_at: Optional[datetime] = None
 
 
 state = State()
@@ -117,24 +119,43 @@ def _visible_events(
     return visible_events(rows, sports, channels, require_watch_link=True)
 
 
+def _meta_int(meta: dict[str, str], key: str, default: int = 0) -> int:
+    try:
+        return int(meta.get(key) or default)
+    except (TypeError, ValueError):
+        return default
+
+
+def _set_lane_cache(assignments: list[LaneAssignment]) -> list[LaneAssignment]:
+    state.lane_assignments = [row for row in assignments if row.airing.watch_id()]
+    return state.lane_assignments
+
+
+def _store_lanes(
+    assignments: list[LaneAssignment],
+    *,
+    visible_count: int,
+    watchable_count: int,
+) -> None:
+    dropped = max(0, visible_count - len(assignments))
+    state.catalog.replace_lanes(
+        assignments,
+        visible_count=visible_count,
+        watchable_count=watchable_count,
+        dropped=dropped,
+    )
+    _set_lane_cache(assignments)
+
+
 def _labeled_assignments() -> list[LaneAssignment]:
-    rows = state.catalog.assignments()
-    labeled = apply_espn_sports([row.airing for row in rows], state.espn_listings)
-    kept: list[LaneAssignment] = []
-    for row, airing in zip(rows, labeled):
-        if not airing.watch_id():
-            continue
-        if is_non_sports_station(airing.station) or is_non_sports_station(airing.channel):
-            continue
-        if not is_sports_event(airing.station, airing.title, airing.sport):
-            continue
-        kept.append(LaneAssignment(lane=row.lane, airing=airing))
-    return kept
+    if state.lane_assignments is None:
+        _set_lane_cache(state.catalog.assignments())
+    return state.lane_assignments or []
 
 
-async def _refresh_espn_listings(force: bool = False) -> None:
+async def _refresh_espn_listings(force: bool = False) -> bool:
     if not settings.espn_schedule:
-        return
+        return False
     now = datetime.now(timezone.utc)
     if (
         not force
@@ -142,20 +163,25 @@ async def _refresh_espn_listings(force: bool = False) -> None:
         and state.espn_fetched_at
         and now - state.espn_fetched_at < timedelta(seconds=120)
     ):
-        return
+        return False
     try:
         listings = await fetch_espn_schedule(state.http)
     except (httpx.HTTPError, ValueError, TypeError):
-        return
+        return False
     if listings:
         state.espn_listings = listings
         state.espn_fetched_at = now
         events = apply_espn_sports(state.catalog.events(), listings)
         if events:
             state.catalog.update_sports(events)
-            state.catalog.replace_lanes(
-                pack_lanes(_visible_events(events), settings.lane_count)
+            visible = _visible_events(events)
+            _store_lanes(
+                pack_lanes(visible, settings.lane_count),
+                visible_count=len(visible),
+                watchable_count=len(_watchable_events(events)),
             )
+        return True
+    return False
 
 
 def _novnc_url(request: Request) -> str:
@@ -171,6 +197,33 @@ def _novnc_url(request: Request) -> str:
 def _loopback_host(host: str) -> bool:
     label = (host or "").lower().strip("[]")
     return label in {"127.0.0.1", "localhost", "::1", "0.0.0.0"} or label.endswith(".localhost")
+
+
+def _session_view(meta: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    meta = meta if meta is not None else state.catalog.meta()
+    last_error = for_ui(meta.get("last_error")) or ""
+    signed_in = state.store.signed_in
+    return {
+        "signed_in": signed_in,
+        "session_expired": bool(signed_in and session_expired_message(last_error)),
+        "last_error": last_error or None,
+    }
+
+
+async def _clear_expired_chrome() -> None:
+    if not settings.enable_chrome:
+        return
+    try:
+        if await chrome_available(state.http, settings.cdp_url):
+            await clear_browser_cookies(state.http, settings.cdp_url)
+    except (ChromeError, httpx.HTTPError, RuntimeError):
+        return
+
+
+async def _mark_refresh_failure(exc: Exception) -> None:
+    state.catalog.set_error(str(exc))
+    if isinstance(exc, MineError) and session_expired_message(str(exc)):
+        await _clear_expired_chrome()
 
 
 def _public_base_url(request: Request) -> str:
@@ -253,13 +306,14 @@ async def refresh_catalog() -> dict[str, Any]:
             try:
                 mined = await state.innertube.mine(session, settings.fallback_duration_min)
             except (MineError, httpx.HTTPError) as exc:
-                state.catalog.set_error(str(exc))
+                await _mark_refresh_failure(exc)
                 raise
             events = apply_espn_sports(
                 merge_airings(item for item in mined.airings if item.kind == "event"),
                 state.espn_listings,
             )
             visible = _visible_events(events)
+            watchable = _watchable_events(events)
             assignments = pack_lanes(visible, settings.lane_count)
             linear_ignored = len(mined.airings) - len(events)
             state.catalog.replace(
@@ -269,7 +323,11 @@ async def refresh_catalog() -> dict[str, Any]:
                 browse_id=mined.browse_id,
                 linear_ignored=linear_ignored,
                 dropped=max(0, len(visible) - len(assignments)),
+                visible_count=len(visible),
+                watchable_count=len(watchable),
             )
+            _set_lane_cache(assignments)
+            state.last_full_mine_at = datetime.now(timezone.utc)
             if settings.allow_debug:
                 state.catalog.save_debug(settings.data_dir, "last_browse.json", mined.raw)
             return {
@@ -288,20 +346,83 @@ async def refresh_catalog() -> dict[str, Any]:
         state.refreshing = state.refresh_jobs > 0
 
 
+def _unresolved_soon(events: list[Airing], *, within_hours: int = 36, limit: int = 80) -> list[Airing]:
+    now = datetime.now(timezone.utc)
+    cutoff = now + timedelta(hours=within_hours)
+    pending: list[Airing] = []
+    for item in events:
+        if item.watch_id() or not item.entity_id:
+            continue
+        if not item.live and item.start > cutoff:
+            continue
+        pending.append(item)
+        if len(pending) >= limit:
+            break
+    return pending
+
+
+async def refresh_watch_ids() -> dict[str, Any]:
+    state.refresh_jobs += 1
+    state.refreshing = True
+    try:
+        async with state.refresh_lock:
+            await _sync_session_from_chrome()
+            espn_changed = await _refresh_espn_listings()
+            session = _ensure_session()
+            candidates = _unresolved_soon(state.catalog.events(kind="event"))
+            pairs: list[tuple[Airing, Airing]] = []
+            if candidates:
+                try:
+                    resolved = await state.innertube.resolve_soon(session, dict(CLIENTS[0]), candidates)
+                except (MineError, httpx.HTTPError) as exc:
+                    await _mark_refresh_failure(exc)
+                    raise
+                for previous, updated in zip(candidates, resolved):
+                    if not isinstance(updated, Airing):
+                        continue
+                    if updated.watch_id() and updated.watch_id() != previous.watch_id():
+                        pairs.append((previous, updated))
+            if pairs:
+                state.catalog.replace_resolved(pairs)
+            if pairs or espn_changed:
+                visible = _visible_events()
+                _store_lanes(
+                    pack_lanes(visible, settings.lane_count),
+                    visible_count=len(visible),
+                    watchable_count=len(_watchable_events()),
+                )
+                state.catalog.touch_refresh()
+            return {
+                "ok": True,
+                "resolved": len(pairs),
+                "changed": bool(pairs or espn_changed),
+            }
+    finally:
+        state.refresh_jobs = max(0, state.refresh_jobs - 1)
+        state.refreshing = state.refresh_jobs > 0
+
+
 async def refresh_loop() -> None:
-    delay = 5
+    delay = 30
     while True:
-        prune_chrome_profile(settings.chrome_profile_dir)
-        await _sync_session_from_chrome()
-        await _refresh_espn_listings()
         if state.store.signed_in:
             try:
-                await refresh_catalog()
+                now = datetime.now(timezone.utc)
+                due = (
+                    state.last_full_mine_at is None
+                    or (now - state.last_full_mine_at).total_seconds() >= max(settings.full_mine_seconds, 30)
+                )
+                if due:
+                    prune_chrome_profile(settings.chrome_profile_dir)
+                    await refresh_catalog()
+                else:
+                    await refresh_watch_ids()
                 delay = max(settings.refresh_seconds, 30)
             except Exception:
-                delay = 15
+                delay = 60
         elif settings.enable_chrome:
-            delay = 5
+            await _sync_session_from_chrome()
+            delay = 30
         else:
             delay = max(settings.refresh_seconds, 30)
         await asyncio.sleep(delay)
@@ -313,7 +434,12 @@ async def lifespan(_app: FastAPI):
     prune_chrome_profile(settings.chrome_profile_dir, cap_cache=True)
     state.catalog.ensure_hidden_sports(settings.hidden_sports_list)
     state.catalog.ensure_hidden_channels(settings.hidden_channels_list)
-    state.catalog.replace_lanes(pack_lanes(_visible_events(), settings.lane_count))
+    visible = _visible_events()
+    _store_lanes(
+        pack_lanes(visible, settings.lane_count),
+        visible_count=len(visible),
+        watchable_count=len(_watchable_events()),
+    )
     if state.http.is_closed:
         state.http = httpx.AsyncClient(timeout=60.0, follow_redirects=True)
         state.innertube = InnerTubeClient(state.http)
@@ -337,12 +463,14 @@ app.mount("/static", StaticFiles(directory=str(ROOT / "static")), name="static")
 @app.get("/health")
 async def health() -> dict[str, Any]:
     meta = state.catalog.meta()
+    auth = _session_view(meta)
     return {
         "ok": True,
-        "signed_in": state.store.signed_in,
+        "signed_in": auth["signed_in"],
+        "session_expired": auth["session_expired"],
         "chrome": settings.enable_chrome,
         "last_refresh": meta.get("last_refresh"),
-        "last_error": for_ui(meta.get("last_error")) or None,
+        "last_error": auth["last_error"],
         "refreshing": state.refreshing,
     }
 
@@ -350,28 +478,30 @@ async def health() -> dict[str, Any]:
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request) -> HTMLResponse:
     meta = state.catalog.meta()
+    auth = _session_view(meta)
     all_events = state.catalog.events(kind="event")
     hidden = state.catalog.hidden_sports()
     hidden_channels = state.catalog.hidden_channels()
     visible = _visible_events(all_events, hidden, hidden_channels)
     linked = _watchable_events(all_events)
     zone = local_tz()
-    shown = visible[:1000]
+    shown = linked[:2000]
     return templates.TemplateResponse(
         request,
         "index.html",
         {
-            "signed_in": state.store.signed_in,
+            "signed_in": auth["signed_in"],
+            "session_expired": auth["session_expired"],
             "last_refresh": format_refresh(meta.get("last_refresh") or "", tz=zone),
             "last_refresh_at": meta.get("last_refresh") or "",
-            "last_error": for_ui(meta.get("last_error")),
+            "last_error": auth["last_error"] or "",
             "client": meta.get("last_client") or "",
             "browse_id": meta.get("last_browse_id") or "",
             "event_count": len(visible),
             "all_event_count": len(linked),
             "shown_count": len(shown),
             "linear_count": int(meta.get("linear_ignored") or 0),
-            "event_groups": group_events_for_ui(visible, tz=zone, limit=1000),
+            "event_groups": group_events_for_ui(linked, tz=zone, limit=2000),
             "sports": sport_counts(linked),
             "channels": channel_counts(linked),
             "hidden_sports": hidden,
@@ -393,15 +523,17 @@ async def dashboard(request: Request) -> HTMLResponse:
 @app.get("/api/status")
 async def api_status() -> dict[str, Any]:
     meta = state.catalog.meta()
+    auth = _session_view(meta)
     return {
-        "signed_in": state.store.signed_in,
+        "signed_in": auth["signed_in"],
+        "session_expired": auth["session_expired"],
         "last_refresh": meta.get("last_refresh"),
-        "last_error": for_ui(meta.get("last_error")) or None,
+        "last_error": auth["last_error"],
         "refreshing": state.refreshing,
         "client": meta.get("last_client") or None,
         "browse_id": meta.get("last_browse_id") or None,
-        "events": len(_visible_events()),
-        "all_events": len(_watchable_events()),
+        "events": _meta_int(meta, "visible_count"),
+        "all_events": _meta_int(meta, "watchable_count"),
         "linear": int(meta.get("linear_ignored") or 0),
         "lanes_used": int(meta.get("lanes_used") or 0),
         "dropped": int(meta.get("dropped_events") or 0),
@@ -464,6 +596,7 @@ async def auth_logout() -> dict[str, bool]:
             pass
     state.session = None
     state.store.clear()
+    state.catalog.clear_error()
     return {"ok": True}
 
 
@@ -503,12 +636,18 @@ async def set_filters(request: Request) -> dict[str, Any]:
     state.catalog.set_hidden_sports(hidden)
     state.catalog.set_hidden_channels(hidden_channels)
     visible = _visible_events(None, hidden, hidden_channels)
-    state.catalog.replace_lanes(pack_lanes(visible, settings.lane_count))
+    watchable = _watchable_events()
+    _store_lanes(
+        pack_lanes(visible, settings.lane_count),
+        visible_count=len(visible),
+        watchable_count=len(watchable),
+    )
     return {
         "ok": True,
         "hidden": state.catalog.hidden_sports(),
         "hidden_channels": state.catalog.hidden_channels(),
         "events": len(visible),
+        "all_events": len(watchable),
     }
 
 

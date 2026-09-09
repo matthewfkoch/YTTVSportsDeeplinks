@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -26,8 +27,12 @@ class Catalog:
     def __init__(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
+        self._lock = threading.RLock()
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA busy_timeout=5000")
+        self._conn.execute("PRAGMA synchronous=NORMAL")
         self._init()
 
     def _init(self) -> None:
@@ -79,6 +84,34 @@ class Catalog:
         browse_id: str = "",
         linear_ignored: int = 0,
         dropped: int = 0,
+        visible_count: Optional[int] = None,
+        watchable_count: Optional[int] = None,
+    ) -> None:
+        with self._lock:
+            self._replace(
+                airings,
+                assignments,
+                error=error,
+                client=client,
+                browse_id=browse_id,
+                linear_ignored=linear_ignored,
+                dropped=dropped,
+                visible_count=visible_count,
+                watchable_count=watchable_count,
+            )
+
+    def _replace(
+        self,
+        airings: list[Airing],
+        assignments: list[LaneAssignment],
+        *,
+        error: str = "",
+        client: str = "",
+        browse_id: str = "",
+        linear_ignored: int = 0,
+        dropped: int = 0,
+        visible_count: Optional[int] = None,
+        watchable_count: Optional[int] = None,
     ) -> None:
         cur = self._conn.cursor()
         cur.execute("DELETE FROM events")
@@ -108,20 +141,7 @@ class Catalog:
                     channel = excluded.channel
                 """,
                 [
-                    (
-                        item.video_id,
-                        item.title,
-                        item.station,
-                        item.kind,
-                        item.start.timestamp(),
-                        item.end.timestamp(),
-                        item.deeplink,
-                        1 if item.live else 0,
-                        item.source,
-                        item.sport,
-                        item.entity_id,
-                        item.channel or infer_channel(item.station, item.title),
-                    )
+                    self._row_values(item)
                     for item in rows
                 ],
             )
@@ -137,34 +157,92 @@ class Catalog:
             self._set_meta("last_client", client, cur)
             self._set_meta("last_browse_id", browse_id, cur)
             self._set_meta("linear_ignored", str(linear_ignored), cur)
-            self._set_meta("lanes_used", str(len({row.lane for row in assignments})), cur)
-            self._set_meta("dropped_events", str(dropped), cur)
+            self._write_count_meta(
+                cur,
+                assignments,
+                dropped=dropped,
+                visible_count=visible_count,
+                watchable_count=watchable_count,
+            )
             self._conn.commit()
         except Exception:
             self._conn.rollback()
             raise
 
-    def replace_lanes(self, assignments: list[LaneAssignment]) -> None:
-        cur = self._conn.cursor()
-        cur.execute("DELETE FROM lanes")
-        cur.executemany(
-            "INSERT INTO lanes(lane, video_id, start_ts, end_ts) VALUES (?, ?, ?, ?)",
-            [
-                (row.lane, row.airing.video_id, row.airing.start.timestamp(), row.airing.end.timestamp())
-                for row in assignments
-            ],
-        )
-        self._conn.commit()
+    def replace_lanes(
+        self,
+        assignments: list[LaneAssignment],
+        *,
+        visible_count: Optional[int] = None,
+        watchable_count: Optional[int] = None,
+        dropped: Optional[int] = None,
+    ) -> None:
+        with self._lock:
+            cur = self._conn.cursor()
+            cur.execute("DELETE FROM lanes")
+            cur.executemany(
+                "INSERT INTO lanes(lane, video_id, start_ts, end_ts) VALUES (?, ?, ?, ?)",
+                [
+                    (row.lane, row.airing.video_id, row.airing.start.timestamp(), row.airing.end.timestamp())
+                    for row in assignments
+                ],
+            )
+            if dropped is None and visible_count is not None:
+                dropped = max(0, visible_count - len(assignments))
+            self._write_count_meta(
+                cur,
+                assignments,
+                dropped=dropped,
+                visible_count=visible_count,
+                watchable_count=watchable_count,
+            )
+            self._conn.commit()
+
+    def replace_resolved(self, pairs: list[tuple[Airing, Airing]]) -> None:
+        if not pairs:
+            return
+        with self._lock:
+            cur = self._conn.cursor()
+            for previous, resolved in pairs:
+                cur.execute(
+                    "DELETE FROM events WHERE video_id = ? AND start_ts = ?",
+                    (previous.video_id, previous.start.timestamp()),
+                )
+                cur.execute(
+                    """
+                    INSERT INTO events(video_id, title, station, kind, start_ts, end_ts, deeplink, live, source, sport, entity_id, channel)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(video_id, start_ts) DO UPDATE SET
+                        title = excluded.title,
+                        station = excluded.station,
+                        kind = excluded.kind,
+                        end_ts = excluded.end_ts,
+                        deeplink = excluded.deeplink,
+                        live = excluded.live,
+                        source = excluded.source,
+                        sport = excluded.sport,
+                        entity_id = excluded.entity_id,
+                        channel = excluded.channel
+                    """,
+                    self._row_values(resolved),
+                )
+            self._conn.commit()
+
+    def touch_refresh(self) -> None:
+        with self._lock:
+            self._set_meta("last_refresh", datetime.now(timezone.utc).isoformat())
+            self._conn.commit()
 
     def update_sports(self, airings: list[Airing]) -> None:
-        self._conn.executemany(
-            "UPDATE events SET sport = ? WHERE video_id = ? AND start_ts = ?",
-            [
-                (item.sport, item.video_id, item.start.timestamp())
-                for item in airings
-            ],
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.executemany(
+                "UPDATE events SET sport = ? WHERE video_id = ? AND start_ts = ?",
+                [
+                    (item.sport, item.video_id, item.start.timestamp())
+                    for item in airings
+                ],
+            )
+            self._conn.commit()
 
     def ensure_hidden_sports(self, defaults: list[str]) -> None:
         if "hidden_sports" in self.meta():
@@ -177,15 +255,22 @@ class Catalog:
         self.set_hidden_channels(defaults)
 
     def set_error(self, message: str) -> None:
-        self._set_meta("last_error", for_ui(message))
-        self._set_meta("last_refresh", datetime.now(timezone.utc).isoformat())
-        self._conn.commit()
+        with self._lock:
+            self._set_meta("last_error", for_ui(message))
+            self._set_meta("last_refresh", datetime.now(timezone.utc).isoformat())
+            self._conn.commit()
+
+    def clear_error(self) -> None:
+        with self._lock:
+            self._set_meta("last_error", "")
+            self._conn.commit()
 
     def hidden_sports(self) -> list[str]:
         return self._meta_list("hidden_sports")
 
     def set_hidden_sports(self, sports: list[str]) -> None:
-        self._set_meta_list("hidden_sports", sports)
+        with self._lock:
+            self._set_meta_list("hidden_sports", sports)
 
     def hidden_channels(self) -> list[str]:
         return [
@@ -195,10 +280,11 @@ class Catalog:
         ]
 
     def set_hidden_channels(self, channels: list[str]) -> None:
-        self._set_meta_list(
-            "hidden_channels",
-            [item for item in channels if item not in {"Other", "Other extras"}],
-        )
+        with self._lock:
+            self._set_meta_list(
+                "hidden_channels",
+                [item for item in channels if item not in {"Other", "Other extras"}],
+            )
 
     def filtered_events(self) -> list[Airing]:
         return visible_events(
@@ -209,8 +295,9 @@ class Catalog:
         )
 
     def meta(self) -> dict[str, str]:
-        rows = self._conn.execute("SELECT key, value FROM meta").fetchall()
-        return {str(row["key"]): str(row["value"]) for row in rows}
+        with self._lock:
+            rows = self._conn.execute("SELECT key, value FROM meta").fetchall()
+            return {str(row["key"]): str(row["value"]) for row in rows}
 
     def events(self, kind: Optional[str] = None) -> list[Airing]:
         sql = "SELECT * FROM events"
@@ -219,22 +306,41 @@ class Catalog:
             sql += " WHERE kind = ?"
             args = (kind,)
         sql += " ORDER BY start_ts, title"
-        return [self._row_to_airing(row) for row in self._conn.execute(sql, args)]
+        with self._lock:
+            return [self._row_to_airing(row) for row in self._conn.execute(sql, args)]
 
     def assignments(self) -> list[LaneAssignment]:
-        rows = self._conn.execute(
-            """
-            SELECT l.lane, e.*
-            FROM lanes l
-            JOIN events e ON e.video_id = l.video_id AND e.start_ts = l.start_ts
-            ORDER BY l.lane, e.start_ts
-            """
-        ).fetchall()
-        return [LaneAssignment(lane=int(row["lane"]), airing=self._row_to_airing(row)) for row in rows]
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT l.lane, e.*
+                FROM lanes l
+                JOIN events e ON e.video_id = l.video_id AND e.start_ts = l.start_ts
+                ORDER BY l.lane, e.start_ts
+                """
+            ).fetchall()
+            return [LaneAssignment(lane=int(row["lane"]), airing=self._row_to_airing(row)) for row in rows]
 
     def save_debug(self, data_dir: Path, name: str, payload: Any) -> None:
         target = data_dir / name
         target.write_text(json.dumps(payload, indent=2)[:2_000_000], encoding="utf-8")
+
+    def _write_count_meta(
+        self,
+        cur: sqlite3.Cursor,
+        assignments: list[LaneAssignment],
+        *,
+        dropped: Optional[int] = None,
+        visible_count: Optional[int] = None,
+        watchable_count: Optional[int] = None,
+    ) -> None:
+        self._set_meta("lanes_used", str(len({row.lane for row in assignments})), cur)
+        if dropped is not None:
+            self._set_meta("dropped_events", str(dropped), cur)
+        if visible_count is not None:
+            self._set_meta("visible_count", str(visible_count), cur)
+        if watchable_count is not None:
+            self._set_meta("watchable_count", str(watchable_count), cur)
 
     def _set_meta(self, key: str, value: str, cur: Optional[sqlite3.Cursor] = None) -> None:
         handle = cur or self._conn
@@ -257,6 +363,22 @@ class Catalog:
         cleaned = sorted({str(item).strip() for item in items if str(item).strip()})
         self._set_meta(key, json.dumps(cleaned))
         self._conn.commit()
+
+    def _row_values(self, item: Airing) -> tuple[Any, ...]:
+        return (
+            item.video_id,
+            item.title,
+            item.station,
+            item.kind,
+            item.start.timestamp(),
+            item.end.timestamp(),
+            item.deeplink,
+            1 if item.live else 0,
+            item.source,
+            item.sport,
+            item.entity_id,
+            item.channel or infer_channel(item.station, item.title),
+        )
 
     def _row_to_airing(self, row: sqlite3.Row) -> Airing:
         keys = row.keys()

@@ -129,10 +129,19 @@ def _prefer_linear_simulcasts(airings: list[Airing]) -> list[Airing]:
         ),
     )
     kept: list[Airing] = []
+    buckets: dict[str, list[Airing]] = {}
     for item in ordered:
-        if any(_same_matchup_slot(item, prev) for prev in kept):
+        if not is_matchup(item.title):
+            kept.append(item)
             continue
-        kept.append(item)
+        buckets.setdefault(_matchup_key(item.title), []).append(item)
+    for group in buckets.values():
+        group_kept: list[Airing] = []
+        for item in group:
+            if any(_same_matchup_slot(item, prev) for prev in group_kept):
+                continue
+            group_kept.append(item)
+        kept.extend(group_kept)
     return sorted(kept, key=lambda item: (item.start, item.title, item.video_id))
 
 
@@ -272,19 +281,16 @@ def _context_from_node(node: dict[str, Any], ctx: _WalkCtx) -> _WalkCtx:
         start = _coerce_time(upcoming.get("startTime")) or start
     live = ctx.live or _is_live(node)
     sport = ctx.sport
-    inferred = infer_sport(title, station)
-    if inferred != "Other":
-        sport = inferred
-    row_kind = ctx.row_kind
-    if station or title:
-        row_kind = _classify(station, title, sport, ctx.tab)
+    if title != ctx.title or station != ctx.station:
+        inferred = infer_sport(title, station)
+        if inferred != "Other":
+            sport = inferred
     return ctx.child(
         title=title,
         station=station,
         start=start,
         end=end,
         live=live,
-        row_kind=row_kind,
         sport=sport,
     )
 
@@ -304,7 +310,7 @@ def _to_airing(
     end = ctx.end or (start + timedelta(minutes=fallback_minutes))
     if end <= start:
         end = start + timedelta(minutes=fallback_minutes)
-    kind = ctx.row_kind or _classify(station, title, ctx.sport, ctx.tab)
+    kind = _classify(station, title, ctx.sport, ctx.tab)
     watch = video_id if _ok_video_id(video_id) else ""
     entity_id = ctx.entity_id
     if not watch and ENTITY_ID_RE.match(video_id or ""):
@@ -603,14 +609,20 @@ def _station_from_node(node: dict[str, Any]) -> str:
         if isinstance(renderer, dict):
             label = _dig(renderer, ("icon", "accessibility", "accessibilityData", "label"))
             if isinstance(label, str) and label.strip() and not is_unusable_channel_label(label):
-                return clean_station(label) or label.strip()
+                cleaned = clean_station(label)
+                if cleaned:
+                    return cleaned
             text = _text(renderer.get("title")) or _text(renderer.get("name"))
             if text and not is_unusable_channel_label(text):
-                return clean_station(text) or text
+                cleaned = clean_station(text)
+                if cleaned:
+                    return cleaned
     for key in ("stationName", "networkName", "channelName"):
         text = _text(node.get(key))
         if text and not is_unusable_channel_label(text):
-            return clean_station(text) or text
+            cleaned = clean_station(text)
+            if cleaned:
+                return cleaned
     secondary = _text(node.get("secondaryText"))
     if secondary:
         found = _station_from_secondary(secondary, node)
@@ -629,13 +641,18 @@ def _station_from_secondary(secondary: str, node: dict[str, Any]) -> str:
             or is_extra_station(part)
             or is_sports_hub_label(part)
         ):
-            return clean_station(part) or part
+            cleaned = clean_station(part)
+            if cleaned:
+                return cleaned
     if is_espn_plus(secondary) or is_digital_extra(secondary):
         family = infer_channel(secondary)
         if family:
             return family
-    if node.get("startTimeSeconds") is not None and usable:
-        return clean_station(usable[0]) or usable[0]
+    if node.get("startTimeSeconds") is not None:
+        for part in usable:
+            cleaned = clean_station(part)
+            if cleaned:
+                return cleaned
     return ""
 
 

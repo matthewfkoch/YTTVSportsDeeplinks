@@ -56,6 +56,7 @@ h1, h2 { margin: 0 0 0.4rem; }
 .status { padding: 0.45rem 0.8rem; font-weight: 600; }
 .status.ok { color: var(--ok); }
 .status.warn { color: var(--warn); }
+.status.err { color: var(--err); }
 
 button {
   background: #fff;
