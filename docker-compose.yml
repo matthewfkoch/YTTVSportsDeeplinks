@@ -1,7 +1,10 @@
+name: yttvsportsdeeplinks
+
 services:
-  yttv-espn-plus:
+  yttvsportsdeeplinks:
+    image: yttvsportsdeeplinks
     build: .
-    container_name: yttv-espn-plus
+    container_name: yttvsportsdeeplinks
     ports:
       - "8095:8095"
       - "7900:7900"
@@ -23,8 +26,9 @@ services:
       ENABLE_CHROME: ${ENABLE_CHROME:-1}
       NOVNC_PUBLIC_URL: ${NOVNC_PUBLIC_URL:-}
     volumes:
-      - yttv-espn-plus-data:/data
+      - yttvsportsdeeplinks-data:/data
     restart: unless-stopped
 
 volumes:
-  yttv-espn-plus-data:
+  yttvsportsdeeplinks-data:
+    name: yttvsportsdeeplinks-data

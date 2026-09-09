@@ -4,7 +4,7 @@ YouTube TV sports guide with a watch link per game. Sign in once in the containe
 
 This is not YouTube on TV (`youtube.com/tv`). It is not part of APITuner.
 
-The Compose service and volume stay `yttv-espn-plus` so an existing login is reused.
+The Compose project, image, container, and volume are `yttvsportsdeeplinks` / `yttvsportsdeeplinks-data`. If you already had a login in `yttv-espn-plus-data`, copy that volume before the first start or you will sign in again.
 
 ## Sign in
 
@@ -13,7 +13,7 @@ Google blocks third-party YouTube TV OAuth, so the container runs Chromium on a 
 1. `docker compose up -d --build`
 2. Open `http://<host>:8095`
 3. In the login desktop, sign in to [tv.youtube.com](https://tv.youtube.com) with the Google account that owns YouTube TV (account picker and 2FA stay in Google)
-4. The dashboard saves the session when it sees a YouTube TV login. The Chromium profile lives in the `yttv-espn-plus-data` volume and is reused after restarts
+4. The dashboard saves the session when it sees a YouTube TV login. The Chromium profile lives in the `yttvsportsdeeplinks-data` volume and is reused after restarts
 
 The desktop is also at `http://<host>:7900`. Do not expose port 7900 to the internet; it is a full browser session.
 
@@ -22,12 +22,20 @@ Cookie paste remains available as a fallback. This service does not store your G
 ## Run
 
 ```bash
-cd ~/Documents/GitHub/yttv-epg
 cp .env.example .env
 docker compose up -d --build
 ```
 
-Set `PUBLIC_BASE_URL` if APITuner should always use a fixed host, for example `http://192.168.1.10:8095` or `http://yttv-espn-plus:8095` on a shared Docker network. If you leave it as localhost, the dashboard, M3U, and export use the address you opened the page with.
+Set `PUBLIC_BASE_URL` if APITuner should always use a fixed host, for example `http://192.168.1.10:8095` or `http://yttvsportsdeeplinks:8095` on a shared Docker network. If you leave it as localhost, the dashboard, M3U, and export use the address you opened the page with.
+
+To keep an existing YouTube TV login when renaming from `yttv-espn-plus`:
+
+```bash
+docker volume create yttvsportsdeeplinks-data
+docker run --rm -v yttv-epg_yttv-espn-plus-data:/from -v yttvsportsdeeplinks-data:/to alpine cp -a /from/. /to/
+```
+
+If `docker volume ls` shows a different old name, use that as `/from`.
 
 ## Feeds
 
@@ -42,7 +50,7 @@ Set `PUBLIC_BASE_URL` if APITuner should always use a fixed host, for example `h
 Lane URLs:
 
 ```
-http://<yttv-espn-plus>:8095/whatson/1?format=json&include=deeplink&dynamic_url_json_key=deeplink_url
+http://<yttvsportsdeeplinks>:8095/whatson/1?format=json&include=deeplink&dynamic_url_json_key=deeplink_url
 ```
 
 Upcoming events often have no watch ID until they are close to air. Those stay out of the EPG, lanes, and XMLTV until a `tv.youtube.com/watch/…` link exists.

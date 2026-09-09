@@ -1,5 +1,5 @@
 [project]
-name = "yttv-espn-plus"
+name = "yttvsportsdeeplinks"
 version = "0.1.0"
 description = "YouTube TV sports guide and deeplinks"
 readme = "README.md"
@@ -22,7 +22,7 @@ dev = [
 ]
 
 [project.scripts]
-yttv-espn-plus = "yttv_epg.__main__:main"
+yttvsportsdeeplinks = "yttv_epg.__main__:main"
 
 [build-system]
 requires = ["setuptools>=68"]

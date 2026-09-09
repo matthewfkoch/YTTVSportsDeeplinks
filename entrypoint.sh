@@ -51,8 +51,10 @@ start_desktop() {
   fi
 
   (
+    delay=30
     while true; do
       rm -f "$CHROME_PROFILE/SingletonLock" "$CHROME_PROFILE/SingletonSocket" "$CHROME_PROFILE/SingletonCookie"
+      started=$(date +%s)
       "$CHROME_BIN" \
         --no-sandbox \
         --test-type \
@@ -86,7 +88,17 @@ start_desktop() {
         --window-position=0,0 \
         --start-maximized \
         https://tv.youtube.com >/tmp/chromium.log 2>&1 || true
-      sleep 2
+      ran=$(($(date +%s) - started))
+      if [ "$ran" -ge 120 ]; then
+        delay=30
+      elif [ "$delay" -lt 300 ]; then
+        delay=$((delay * 2))
+        if [ "$delay" -gt 300 ]; then
+          delay=300
+        fi
+      fi
+      echo "Chromium exited after ${ran}s; restarting in ${delay}s"
+      sleep "$delay"
     done
   ) &
 }

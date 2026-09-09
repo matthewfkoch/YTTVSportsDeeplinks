@@ -61,7 +61,7 @@ def test_m3u_uses_whatson_resolver():
 
 def test_apituner_export_is_separate_source():
     rows = apituner_export(
-        base_url="http://yttv-epg:8095",
+        base_url="http://yttvsportsdeeplinks:8095",
         lane_count=1,
         start_channel=9100,
         package_name="com.google.android.youtube.tvunplugged",
