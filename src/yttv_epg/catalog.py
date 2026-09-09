@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from yttv_epg.branding import for_ui
 from yttv_epg.lanes import LaneAssignment
 from yttv_epg.parse import Airing, merge_airings
 from yttv_epg.sports import clean_station, infer_channel, resolve_sport, visible_events
@@ -132,7 +133,7 @@ class Catalog:
                 ],
             )
             self._set_meta("last_refresh", datetime.now(timezone.utc).isoformat(), cur)
-            self._set_meta("last_error", error, cur)
+            self._set_meta("last_error", for_ui(error), cur)
             self._set_meta("last_client", client, cur)
             self._set_meta("last_browse_id", browse_id, cur)
             self._set_meta("linear_ignored", str(linear_ignored), cur)
@@ -176,7 +177,7 @@ class Catalog:
         self.set_hidden_channels(defaults)
 
     def set_error(self, message: str) -> None:
-        self._set_meta("last_error", message)
+        self._set_meta("last_error", for_ui(message))
         self._set_meta("last_refresh", datetime.now(timezone.utc).isoformat())
         self._conn.commit()
 

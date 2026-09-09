@@ -50,6 +50,10 @@ STUDIO_SHOW_HINTS = (
     "PRE-MATCH",
     "PREMATCH",
     "MATCH PREVIEW",
+    "SEASON PREVIEW",
+    "GAMEDAY",
+    "TOTAL ACCESS",
+    "GOOD MORNING FOOTBALL",
     "COACHING LEGENDS",
     "DAN PATRICK",
     "GAME BREAK",
@@ -466,6 +470,8 @@ def is_unusable_channel_label(label: str) -> bool:
         return False
     padded = f" {norm_name(text)} "
     if any(token in padded for token in (" AM ", " PM ", " TODAY ", " TOMORROW ", " MIN LEFT ", " STARTS ")):
+        return True
+    if "SEASON PREVIEW" in padded:
         return True
     return bool(MONTH_DAY_RE.match(text))
 

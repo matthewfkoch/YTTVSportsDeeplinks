@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from yttv_epg.parse import Airing
+from yttv_epg.sports import clean_station, event_channel
 
 
 def local_tz(name: str = "") -> ZoneInfo:
@@ -54,7 +55,8 @@ def event_for_ui(item: Airing, *, tz: ZoneInfo | None = None, now: datetime | No
     payload["clock"] = format_clock(item.start, tz=zone)
     payload["day"] = format_day_heading(item.start, now=now, tz=zone)
     payload["watchable"] = bool(item.watch_id())
-    payload["channel"] = item.channel
+    payload["channel"] = event_channel(item)
+    payload["station"] = clean_station(item.station, item.title) or payload["channel"]
     payload["search"] = " ".join(
         filter(None, [payload["day"], payload["clock"], item.sport, item.channel, item.title, item.station])
     ).lower()

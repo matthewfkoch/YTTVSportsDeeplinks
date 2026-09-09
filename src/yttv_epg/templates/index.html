@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ product_name }}</title>
+  <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
   <link rel="icon" type="image/png" href="/static/logo.png">
   <link rel="apple-touch-icon" href="/static/logo.png">
   <link rel="stylesheet" href="/static/app.css">
@@ -17,11 +18,11 @@
   <main>
     <header>
       <div class="brand">
-        <img class="brand-mark" src="/static/logo.png" width="56" height="56" alt="">
+        <img class="brand-mark" src="/static/logo.svg" width="56" height="56" alt="">
         <div>
           <p class="eyebrow">{{ eyebrow }}</p>
           <h1>{{ product_name }}</h1>
-          <p class="lede">YouTube TV sports events, published as XMLTV and tuner lanes with a watch link for each listing.</p>
+          <p class="lede">YTTV sports events, published as XMLTV and tuner lanes with a watch link for each listing.</p>
         </div>
       </div>
       <div id="session-status" class="status {{ 'ok' if signed_in else 'warn' }}">
@@ -32,14 +33,14 @@
     <section class="card" id="auth-card">
       <h2>Sign in</h2>
       <div id="idle-auth" {% if signed_in %}hidden{% endif %}>
-        <p class="muted">Use <strong>tv.youtube.com</strong> with the Google account that owns YouTube TV. Signing in at youtube.com/tv will not work. The session is stored in this container.</p>
+        <p class="muted">Use <strong>tv.youtube.com</strong> with the Google account that owns YTTV. Signing in at youtube.com/tv will not work. The session is stored in this container.</p>
         {% if chrome_enabled %}
         <div id="desktop-wrap">
           <div class="row">
             <a class="button-link" id="desktop-link" href="{{ novnc_url }}" target="_blank" rel="noopener">Open browser</a>
             <button id="capture-btn" class="secondary" type="button">Save session</button>
           </div>
-          <iframe id="desktop-frame" class="desktop-frame" title="YouTube TV login" src="{{ novnc_url }}"></iframe>
+          <iframe id="desktop-frame" class="desktop-frame" title="YTTV login" src="{{ novnc_url }}"></iframe>
           <p class="muted" id="chrome-note">Waiting for you to finish signing in…</p>
         </div>
         {% endif %}
@@ -54,7 +55,7 @@
         </details>
       </div>
       <div id="signed-auth" {% if not signed_in %}hidden{% endif %}>
-        <p class="muted">Your YouTube TV session is stored on this container’s volume.</p>
+        <p class="muted">Your YTTV session is stored on this container’s volume.</p>
         <div class="row">
           <button id="refresh-btn" type="button">Refresh guide</button>
           <button id="logout-btn" class="secondary" type="button">Sign out</button>

@@ -84,7 +84,7 @@ class InnerTubeClient:
                 errors.append(str(exc))
                 continue
             return str(client["name"])
-        raise MineError(errors[-1] if errors else "YouTube TV rejected this session.")
+        raise MineError(errors[-1] if errors else "YTTV rejected this session.")
 
     async def mine(self, session: SavedSession, fallback_minutes: int = 180) -> MineResult:
         errors: list[str] = []
@@ -356,7 +356,7 @@ class InnerTubeClient:
             headers["X-Goog-Visitor-Id"] = self.visitor_data
         response = await self.http.post(url, json=payload, headers=headers, timeout=45)
         if response.status_code in {401, 403}:
-            raise MineError("YouTube TV session expired. Sign in again on tv.youtube.com.")
+            raise MineError("YTTV session expired. Sign in again on tv.youtube.com.")
         if response.status_code >= 400:
             raise MineError(_http_error(client["name"], url, response))
         try:

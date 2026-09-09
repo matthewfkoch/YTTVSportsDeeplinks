@@ -49,6 +49,10 @@ def test_extras_and_volleyball_are_sports_events():
     assert is_sports_event("2026 WTA Cincinnati", "T2")
     assert not is_sports_event("HBCU GO", "HBCU Football Coaching Legends", sport="Football")
     assert not is_sports_event("ION", "NWSL On ION Pre Match Show", sport="Soccer")
+    assert not is_sports_event("Season Preview", "NFL GameDay", sport="Football")
+    assert not is_sports_event("NFL Network", "NFL GameDay")
+    assert not is_sports_event("ESPN", "College GameDay")
+    assert infer_channel("Season Preview") == ""
     assert is_sports_event("theGRIO", "North Carolina Central at Texas Southern")
     assert is_sports_event("ION", "Gotham FC vs. Kansas City Current")
     assert infer_channel("Best of NBA Inside Stuff") == ""
@@ -264,6 +268,8 @@ def test_visible_events_drops_studio_shows():
         Row("College Football 150: The American Game", "ESPNU"),
         Row("HBCU Football Coaching Legends", "HBCU GO"),
         Row("NWSL On ION Pre Match Show", "ION"),
+        Row("NFL GameDay", "Season Preview"),
+        Row("College GameDay", "ESPN"),
         Row("Practical Magic", "TBS"),
         Row("Celtics vs. Lakers", "NBA TV"),
         Row("North Carolina Central at Texas Southern", "theGRIO"),

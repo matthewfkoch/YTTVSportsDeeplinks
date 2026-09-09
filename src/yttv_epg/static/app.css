@@ -39,7 +39,8 @@ header {
   height: 56px;
   border-radius: 14px;
   flex-shrink: 0;
-  background: #101218;
+  background: #12161f;
+  object-fit: cover;
 }
 
 h1, h2 { margin: 0 0 0.4rem; }

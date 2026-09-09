@@ -15,11 +15,11 @@ from fastapi.templating import Jinja2Templates
 from starlette.datastructures import UploadFile
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from yttv_epg.branding import EYEBROW, PRODUCT_NAME
+from yttv_epg.branding import EYEBROW, PRODUCT_NAME, for_ui
 from yttv_epg.catalog import Catalog
 from yttv_epg.chrome import ChromeError, available as chrome_available
 from yttv_epg.chrome import chrome_signed_in, clear_browser_cookies, fetch_cookies
-from yttv_epg.chrome import open_youtube_tv, status as chrome_status
+from yttv_epg.chrome import open_youtube_tv, prune_chrome_profile, status as chrome_status
 from yttv_epg.config import settings
 from yttv_epg.display import format_refresh, group_events_for_ui, local_tz
 from yttv_epg.espn_schedule import apply_espn_sports, fetch_espn_schedule
@@ -86,7 +86,7 @@ def _basic_header(user: str, password: str) -> str:
 def _ensure_session() -> SavedSession:
     session = state.session or state.store.load()
     if session is None:
-        raise HTTPException(status_code=401, detail="Not signed in to YouTube TV")
+        raise HTTPException(status_code=401, detail="Not signed in to YTTV")
     state.session = session
     return session
 
@@ -291,6 +291,7 @@ async def refresh_catalog() -> dict[str, Any]:
 async def refresh_loop() -> None:
     delay = 5
     while True:
+        prune_chrome_profile(settings.chrome_profile_dir)
         await _sync_session_from_chrome()
         await _refresh_espn_listings()
         if state.store.signed_in:
@@ -309,6 +310,7 @@ async def refresh_loop() -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     settings.data_dir.mkdir(parents=True, exist_ok=True)
+    prune_chrome_profile(settings.chrome_profile_dir, cap_cache=True)
     state.catalog.ensure_hidden_sports(settings.hidden_sports_list)
     state.catalog.ensure_hidden_channels(settings.hidden_channels_list)
     state.catalog.replace_lanes(pack_lanes(_visible_events(), settings.lane_count))
@@ -340,7 +342,7 @@ async def health() -> dict[str, Any]:
         "signed_in": state.store.signed_in,
         "chrome": settings.enable_chrome,
         "last_refresh": meta.get("last_refresh"),
-        "last_error": meta.get("last_error") or None,
+        "last_error": for_ui(meta.get("last_error")) or None,
         "refreshing": state.refreshing,
     }
 
@@ -362,7 +364,7 @@ async def dashboard(request: Request) -> HTMLResponse:
             "signed_in": state.store.signed_in,
             "last_refresh": format_refresh(meta.get("last_refresh") or "", tz=zone),
             "last_refresh_at": meta.get("last_refresh") or "",
-            "last_error": meta.get("last_error") or "",
+            "last_error": for_ui(meta.get("last_error")),
             "client": meta.get("last_client") or "",
             "browse_id": meta.get("last_browse_id") or "",
             "event_count": len(visible),
@@ -394,7 +396,7 @@ async def api_status() -> dict[str, Any]:
     return {
         "signed_in": state.store.signed_in,
         "last_refresh": meta.get("last_refresh"),
-        "last_error": meta.get("last_error") or None,
+        "last_error": for_ui(meta.get("last_error")) or None,
         "refreshing": state.refreshing,
         "client": meta.get("last_client") or None,
         "browse_id": meta.get("last_browse_id") or None,

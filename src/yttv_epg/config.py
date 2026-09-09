@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -39,6 +40,7 @@ class Settings(BaseSettings):
         validation_alias="YTTV_ALT_PACKAGE",
     )
     enable_chrome: bool = Field(default=True, validation_alias="ENABLE_CHROME")
+    chrome_profile: Optional[str] = Field(default=None, validation_alias="CHROME_PROFILE")
     espn_schedule: bool = Field(default=True, validation_alias="ESPN_SCHEDULE")
     cdp_url: str = Field(default="http://127.0.0.1:9222", validation_alias="CDP_URL")
     novnc_port: int = Field(default=7900, validation_alias="NOVNC_PORT")
@@ -47,6 +49,12 @@ class Settings(BaseSettings):
     @property
     def admin_locked(self) -> bool:
         return bool(self.admin_user and self.admin_password)
+
+    @property
+    def chrome_profile_dir(self) -> Path:
+        if self.chrome_profile and self.chrome_profile.strip():
+            return Path(self.chrome_profile)
+        return self.data_dir / "chrome-profile"
 
     @property
     def hidden_sports_list(self) -> list[str]:

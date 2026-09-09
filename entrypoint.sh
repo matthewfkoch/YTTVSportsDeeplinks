@@ -11,6 +11,15 @@ NOVNC_WEB="${NOVNC_WEB:-/usr/share/novnc}"
 
 mkdir -p "${YTTV_EPG_DATA_DIR:-/data}" "$CHROME_PROFILE"
 
+prune_chrome_profile() {
+  [ -d "$CHROME_PROFILE" ] || return 0
+  rm -rf \
+    "$CHROME_PROFILE/BrowserMetrics" \
+    "$CHROME_PROFILE/Crashpad" \
+    "$CHROME_PROFILE/Crash Reports"
+  find "$CHROME_PROFILE" -type f -name '*.pma' -delete 2>/dev/null || true
+}
+
 chrome_bin() {
   if [ -n "${CHROME_BIN:-}" ] && command -v "$CHROME_BIN" >/dev/null 2>&1; then
     printf '%s\n' "$CHROME_BIN"
@@ -50,9 +59,18 @@ start_desktop() {
     websockify --web "$NOVNC_WEB" "0.0.0.0:$NOVNC_PORT" "127.0.0.1:$VNC_PORT" >/tmp/novnc.log 2>&1 &
   fi
 
+  prune_chrome_profile
+  (
+    while true; do
+      prune_chrome_profile
+      sleep 60
+    done
+  ) &
+
   (
     delay=30
     while true; do
+      prune_chrome_profile
       rm -f "$CHROME_PROFILE/SingletonLock" "$CHROME_PROFILE/SingletonSocket" "$CHROME_PROFILE/SingletonCookie"
       started=$(date +%s)
       "$CHROME_BIN" \
@@ -71,11 +89,14 @@ start_desktop() {
         --disable-background-networking \
         --disable-client-side-phishing-detection \
         --disable-component-update \
-        --disable-features=TranslateUI \
+        --disable-breakpad \
+        --disable-crash-reporter \
+        --disable-metrics \
+        --disable-features=TranslateUI,PersistentHistograms \
         --disable-hang-monitor \
         --disable-popup-blocking \
         --disable-prompt-on-repost \
-        --metrics-recording-only \
+        --disk-cache-size=268435456 \
         --mute-audio \
         --password-store=basic \
         --use-mock-keychain \

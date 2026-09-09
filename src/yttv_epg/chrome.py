@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urlparse, urlunparse
 
@@ -11,10 +14,76 @@ from websockets.exceptions import WebSocketException
 from yttv_epg.session import NEEDED_SID
 
 YOUTUBE_TV = "https://tv.youtube.com"
+MAX_DISK_CACHE_BYTES = 256 * 1024 * 1024
+_PROFILE_JUNK_DIRS = ("BrowserMetrics", "Crashpad", "Crash Reports")
 
 
 class ChromeError(RuntimeError):
     pass
+
+
+def prune_chrome_profile(
+    profile: Path,
+    *,
+    cap_cache: bool = False,
+    max_cache_bytes: int = MAX_DISK_CACHE_BYTES,
+) -> int:
+    """Delete Chromium metrics dumps. Optionally cap the disk cache. Login data stays."""
+    if not profile.is_dir():
+        return 0
+    removed = 0
+    for name in _PROFILE_JUNK_DIRS:
+        removed += _remove_tree(profile / name)
+    for pma in profile.glob("*.pma"):
+        removed += _remove_file(pma)
+    if cap_cache:
+        removed += _cap_directory(profile / "Default" / "Cache", max_cache_bytes)
+    return removed
+
+
+def _remove_tree(path: Path) -> int:
+    if not path.exists():
+        return 0
+    size = _path_size(path)
+    if path.is_dir():
+        shutil.rmtree(path, ignore_errors=True)
+    else:
+        _remove_file(path)
+    return size if not path.exists() else 0
+
+
+def _remove_file(path: Path) -> int:
+    try:
+        size = path.stat().st_size
+        path.unlink()
+        return size
+    except OSError:
+        return 0
+
+
+def _path_size(path: Path) -> int:
+    if path.is_file():
+        try:
+            return path.stat().st_size
+        except OSError:
+            return 0
+    total = 0
+    for root, _dirs, files in os.walk(path):
+        for name in files:
+            try:
+                total += (Path(root) / name).stat().st_size
+            except OSError:
+                continue
+    return total
+
+
+def _cap_directory(path: Path, max_bytes: int) -> int:
+    if max_bytes < 0 or not path.is_dir():
+        return 0
+    size = _path_size(path)
+    if size <= max_bytes:
+        return 0
+    return _remove_tree(path)
 
 
 def from_cdp_cookies(raw: Any) -> list[dict[str, str]]:

@@ -24,6 +24,7 @@ def test_dashboard_imports_cookies_not_a_password_or_oauth_form():
         home = client.get("/")
         assert home.status_code == 200
         assert "YTTV Sports Deeplinks" in home.text
+        assert "/static/logo.svg" in home.text
         assert "/static/logo.png" in home.text
         assert "Sports" in home.text
         assert "Channels" in home.text
@@ -32,6 +33,8 @@ def test_dashboard_imports_cookies_not_a_password_or_oauth_form():
         assert "Import session" in home.text
         assert "tv.youtube.com" in home.text
         assert "youtube.com/tv" in home.text
+        assert "YouTube TV" not in home.text
+        assert "YTTV sports events" in home.text
         assert "Continue with Google" not in home.text
         assert 'type="password"' not in home.text
         assert 'name="password"' not in home.text

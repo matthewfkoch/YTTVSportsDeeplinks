@@ -296,9 +296,9 @@ def _to_airing(
     fallback_minutes: int,
     source: str,
 ) -> Airing:
-    title = (ctx.title or ctx.station or f"YouTube TV {video_id}").strip()
+    title = (ctx.title or ctx.station or f"YTTV {video_id}").strip()
     if is_unusable_channel_label(title):
-        title = (ctx.title or f"YouTube TV {video_id}").strip()
+        title = (ctx.title or f"YTTV {video_id}").strip()
     station = clean_station(ctx.station, title)
     start = ctx.start or now
     end = ctx.end or (start + timedelta(minutes=fallback_minutes))

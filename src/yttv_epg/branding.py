@@ -1,5 +1,9 @@
 PRODUCT_NAME = "YTTV Sports Deeplinks"
 SHORT_NAME = "yttv-sports"
 SOURCE_NAME = "yttv-sports"
-EYEBROW = "YouTube TV"
+EYEBROW = "YTTV"
 LOGO_PATH = "/static/logo.png"
+
+
+def for_ui(text: str | None) -> str:
+    return (text or "").replace("YouTube TV", "YTTV")
