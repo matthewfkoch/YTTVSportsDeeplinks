@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from yttv_epg.chrome import chrome_signed_in, from_cdp_cookies, prune_chrome_profile
+from yttv_epg.chrome import chrome_signed_in, from_cdp_cookies, non_youtube_cookies, prune_chrome_profile
+from yttv_epg.session import youtube_tv_cookies
 
 
 def test_from_cdp_cookies_maps_sapisid():
@@ -80,3 +81,45 @@ def test_prune_chrome_profile_keeps_small_cache(tmp_path: Path):
 
 def test_prune_chrome_profile_missing_dir(tmp_path: Path):
     assert prune_chrome_profile(tmp_path / "missing") == 0
+
+
+def test_mixed_cdp_jar_keeps_youtube_domains_only():
+    cookies = from_cdp_cookies(
+        {
+            "cookies": [
+                {
+                    "name": "SAPISID",
+                    "value": "yt",
+                    "domain": ".youtube.com",
+                    "path": "/",
+                    "secure": True,
+                },
+                {
+                    "name": "LOGIN_INFO",
+                    "value": "session",
+                    "domain": ".youtube.com",
+                    "path": "/",
+                    "secure": True,
+                },
+                {
+                    "name": "SID",
+                    "value": "gmail",
+                    "domain": ".google.com",
+                    "path": "/",
+                    "secure": True,
+                },
+                {
+                    "name": "HSID",
+                    "value": "gmail-hsid",
+                    "domain": ".google.com",
+                    "path": "/",
+                    "secure": True,
+                },
+            ]
+        }
+    )
+    kept = youtube_tv_cookies(cookies)
+    dropped = non_youtube_cookies(cookies)
+    assert {item["name"] for item in kept} == {"SAPISID", "LOGIN_INFO"}
+    assert {item["domain"].lstrip(".") for item in kept} == {"youtube.com"}
+    assert {item["name"] for item in dropped} == {"SID", "HSID"}

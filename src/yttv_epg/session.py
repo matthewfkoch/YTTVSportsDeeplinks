@@ -29,20 +29,25 @@ def parse_cookie_text(raw: str) -> list[dict[str, str]]:
     return _from_netscape(text)
 
 
+def is_youtube_cookie_domain(domain: str) -> bool:
+    host = (domain or "").lstrip(".").lower()
+    return host == "youtube.com" or host.endswith(".youtube.com")
+
+
+def youtube_tv_cookies(cookies: list[dict[str, str]]) -> list[dict[str, str]]:
+    return [item for item in cookies if is_youtube_cookie_domain(item.get("domain") or "")]
+
+
 def require_youtube_tv_cookies(cookies: list[dict[str, str]]) -> list[dict[str, str]]:
-    names = {item["name"] for item in cookies if item.get("name")}
+    kept = youtube_tv_cookies(cookies)
+    names = {item["name"] for item in kept if item.get("name")}
     if not names.intersection(NEEDED_SID):
+        if cookies and not kept:
+            raise CookieError("Export cookies from tv.youtube.com, not from an unrelated Google page.")
         raise CookieError(
             "These cookies are missing SAPISID. Export from tv.youtube.com after you are signed in."
         )
-    youtubeish = any(
-        "youtube" in (item.get("domain") or "").lower()
-        or item.get("name") in {"SID", "HSID", "SSID", "LOGIN_INFO", "SAPISID", "__Secure-3PAPISID"}
-        for item in cookies
-    )
-    if not youtubeish:
-        raise CookieError("Export cookies from tv.youtube.com, not from an unrelated Google page.")
-    return cookies
+    return kept
 
 
 def select_cookies(cookies: Iterable[dict[str, str]], host: str = "tv.youtube.com") -> list[dict[str, str]]:
@@ -127,11 +132,8 @@ def _cookie_rank(domain: str, host: str) -> tuple[int, int]:
         return (0, -len(domain))
     if host.endswith("." + domain):
         return (1, -len(domain))
-    if "youtube.com" in host:
-        if domain.endswith("youtube.com"):
-            return (2, -len(domain))
-        if domain.endswith("google.com"):
-            return (4, -len(domain))
+    if "youtube.com" in host and domain.endswith("youtube.com"):
+        return (2, -len(domain))
     return (3, -len(domain))
 
 
@@ -139,13 +141,10 @@ def _domain_matches(domain: str, host: str) -> bool:
     domain = (domain or "").lstrip(".").lower()
     host = host.lower()
     if not domain:
-        return True
-    if host == domain or host.endswith("." + domain) or domain.endswith(host):
-        return True
-    # Google SID cookies often live on .google.com while InnerTube is called on tv.youtube.com.
-    google_family = domain in {"google.com", "youtube.com", "tv.youtube.com"}
-    host_family = "youtube.com" in host or "google.com" in host
-    return google_family and host_family
+        return False
+    if not is_youtube_cookie_domain(domain):
+        return False
+    return host == domain or host.endswith("." + domain) or domain.endswith(host) or "youtube.com" in host
 
 
 def _from_netscape(text: str) -> list[dict[str, str]]:

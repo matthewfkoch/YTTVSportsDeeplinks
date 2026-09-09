@@ -19,8 +19,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-websockify \
         x11vnc \
         xvfb \
+    && mkdir -p /etc/chromium/policies/managed \
     && rm -rf /var/lib/apt/lists/*
 
+COPY chromium-policy.json /etc/chromium/policies/managed/yttv.json
 COPY pyproject.toml requirements.txt README.md ./
 COPY src ./src
 COPY entrypoint.sh /app/entrypoint.sh

@@ -11,7 +11,7 @@ import httpx
 import websockets
 from websockets.exceptions import WebSocketException
 
-from yttv_epg.session import NEEDED_SID
+from yttv_epg.session import NEEDED_SID, is_youtube_cookie_domain, youtube_tv_cookies
 
 YOUTUBE_TV = "https://tv.youtube.com"
 MAX_DISK_CACHE_BYTES = 256 * 1024 * 1024
@@ -114,6 +114,10 @@ def from_cdp_cookies(raw: Any) -> list[dict[str, str]]:
     return cookies
 
 
+def non_youtube_cookies(cookies: list[dict[str, str]]) -> list[dict[str, str]]:
+    return [item for item in cookies if not is_youtube_cookie_domain(item.get("domain") or "")]
+
+
 def chrome_signed_in(cookies: list[dict[str, str]]) -> bool:
     from yttv_epg.session import select_cookies
 
@@ -175,6 +179,34 @@ async def open_youtube_tv(http: httpx.AsyncClient, cdp_url: str) -> dict[str, An
     ws_url = await _browser_ws(http, cdp_url)
     await _cdp(ws_url, "Target.createTarget", {"url": YOUTUBE_TV})
     return {"ok": True, "target": YOUTUBE_TV}
+
+
+async def prune_non_youtube_cookies(
+    http: httpx.AsyncClient,
+    cdp_url: str,
+    cookies: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    kept = youtube_tv_cookies(cookies)
+    dropped = non_youtube_cookies(cookies)
+    if not dropped:
+        return kept
+    try:
+        ws_url = await _browser_ws(http, cdp_url)
+    except ChromeError:
+        return kept
+    for cookie in dropped:
+        params: dict[str, str] = {"name": str(cookie.get("name") or "")}
+        domain = str(cookie.get("domain") or "")
+        path = str(cookie.get("path") or "")
+        if domain:
+            params["domain"] = domain
+        if path:
+            params["path"] = path
+        try:
+            await _cdp(ws_url, "Network.deleteCookies", params)
+        except ChromeError:
+            continue
+    return kept
 
 
 async def clear_browser_cookies(http: httpx.AsyncClient, cdp_url: str) -> None:

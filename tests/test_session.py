@@ -25,8 +25,22 @@ NETSCAPE = """# Netscape HTTP Cookie File
 def test_parse_netscape_and_require_youtube_tv():
     cookies = require_youtube_tv_cookies(parse_cookie_text(NETSCAPE))
     names = {item["name"] for item in cookies}
+    domains = {item["domain"].lstrip(".").lower() for item in cookies}
     assert "SAPISID" in names
     assert "SID" in names
+    assert "HSID" not in names
+    assert domains <= {"youtube.com"}
+
+
+def test_google_com_only_jar_is_rejected():
+    raw = (
+        "# Netscape HTTP Cookie File\n"
+        ".google.com\tTRUE\t/\tTRUE\t1999999999\tSAPISID\tsapi-secret\n"
+        ".google.com\tTRUE\t/\tTRUE\t1999999999\tSID\tsid-value\n"
+        ".google.com\tTRUE\t/\tTRUE\t1999999999\tHSID\thsid-value\n"
+    )
+    with pytest.raises(CookieError, match="tv.youtube.com"):
+        require_youtube_tv_cookies(parse_cookie_text(raw))
 
 
 def test_parse_json_cookies():
@@ -55,6 +69,8 @@ def test_select_youtube_sapisid_over_google():
     selected = {item["name"]: item["value"] for item in select_cookies(cookies, "tv.youtube.com")}
     assert selected["SAPISID"] == "youtube-sapi"
     assert selected["SID"] == "youtube-sid"
+    assert "google-sapi" not in selected.values()
+    assert "google-sid" not in selected.values()
 
 
 def test_sapisidhash_header_shape():

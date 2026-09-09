@@ -1,0 +1,29 @@
+{
+  "URLBlocklist": ["*"],
+  "URLAllowlist": [
+    "https://tv.youtube.com",
+    "https://[*.]tv.youtube.com",
+    "https://youtube.com",
+    "https://[*.]youtube.com",
+    "https://youtu.be",
+    "https://[*.]youtu.be",
+    "https://accounts.google.com",
+    "https://[*.]accounts.google.com",
+    "https://accounts.youtube.com",
+    "https://[*.]accounts.youtube.com",
+    "https://www.google.com",
+    "https://google.com",
+    "https://gstatic.com",
+    "https://[*.]gstatic.com",
+    "https://googleapis.com",
+    "https://[*.]googleapis.com",
+    "https://googleusercontent.com",
+    "https://[*.]googleusercontent.com",
+    "https://ggpht.com",
+    "https://[*.]ggpht.com",
+    "https://ytimg.com",
+    "https://[*.]ytimg.com",
+    "https://googlevideo.com",
+    "https://[*.]googlevideo.com"
+  ]
+}

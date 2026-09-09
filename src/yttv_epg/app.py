@@ -19,7 +19,7 @@ from yttv_epg.branding import EYEBROW, PRODUCT_NAME, for_ui
 from yttv_epg.catalog import Catalog
 from yttv_epg.chrome import ChromeError, available as chrome_available
 from yttv_epg.chrome import chrome_signed_in, clear_browser_cookies, fetch_cookies
-from yttv_epg.chrome import open_youtube_tv, prune_chrome_profile, status as chrome_status
+from yttv_epg.chrome import open_youtube_tv, prune_chrome_profile, prune_non_youtube_cookies, status as chrome_status
 from yttv_epg.config import settings
 from yttv_epg.display import format_refresh, group_events_for_ui, local_tz
 from yttv_epg.espn_schedule import apply_espn_sports, fetch_espn_schedule
@@ -245,6 +245,7 @@ async def _sync_session_from_chrome() -> bool:
         cookies = await fetch_cookies(state.http, settings.cdp_url)
         if not chrome_signed_in(cookies):
             return False
+        cookies = await prune_non_youtube_cookies(state.http, settings.cdp_url, cookies)
         cookies = require_youtube_tv_cookies(cookies)
     except (ChromeError, CookieError, httpx.HTTPError):
         return False
@@ -579,6 +580,7 @@ async def auth_chrome_capture() -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="In-container Chromium is disabled.")
     try:
         cookies = await fetch_cookies(state.http, settings.cdp_url)
+        cookies = await prune_non_youtube_cookies(state.http, settings.cdp_url, cookies)
         return await _activate_cookies(cookies)
     except CookieError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

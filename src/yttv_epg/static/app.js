@@ -122,19 +122,28 @@ async function runAction(message, request) {
 
 document.getElementById("import-btn")?.addEventListener("click", () => {
   const text = document.getElementById("cookie-text").value;
-  const file = document.getElementById("cookie-file").files[0];
-  runAction("Importing session and refreshing the guide…", () => {
+  const fileInput = document.getElementById("cookie-file");
+  const file = fileInput?.files[0];
+  runAction("Importing session and refreshing the guide…", async () => {
+    let response;
     if (file) {
       const body = new FormData();
       body.append("file", file);
       body.append("cookies", text);
-      return fetch("/api/auth/cookies", { method: "POST", body });
+      response = await fetch("/api/auth/cookies", { method: "POST", body });
+    } else {
+      response = await fetch("/api/auth/cookies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cookies: text }),
+      });
     }
-    return fetch("/api/auth/cookies", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cookies: text }),
-    });
+    if (response.ok) {
+      const box = document.getElementById("cookie-text");
+      if (box) box.value = "";
+      if (fileInput) fileInput.value = "";
+    }
+    return response;
   });
 });
 
