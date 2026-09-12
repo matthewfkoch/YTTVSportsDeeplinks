@@ -96,6 +96,52 @@ def test_popup_watch_endpoint():
     assert airings[0].video_id == "qwertyuiopa"
 
 
+def test_epg_popup_watch_id_beats_catalog_video_id():
+    payload = {
+        "epgAiringRenderer": {
+            "title": {"simpleText": "Colgate vs. Central Michigan"},
+            "videoId": "yC8-VH9j8po",
+            "beginTimeMs": "1757696404000",
+            "endTimeMs": "1757707200000",
+            "navigationEndpoint": {
+                "unpluggedPopupEndpoint": {
+                    "popupRenderer": {
+                        "unpluggedSelectionMenuDialogRenderer": {
+                            "items": [
+                                {
+                                    "unpluggedMenuItemRenderer": {
+                                        "command": {
+                                            "watchEndpoint": {
+                                                "videoId": "tvYf8e8qKzo",
+                                                "params": "0gEEEgIwAQ%3D%3D",
+                                            }
+                                        }
+                                    }
+                                },
+                                {
+                                    "unpluggedMenuItemRenderer": {
+                                        "command": {
+                                            "watchEndpoint": {
+                                                "videoId": "tvYf8e8qKzo",
+                                                "params": "0gEKEgIwARiUipbVBg%3D%3D",
+                                                "playerParams": "gAKUipbVBg%3D%3D",
+                                            }
+                                        }
+                                    }
+                                },
+                            ]
+                        }
+                    }
+                }
+            },
+        }
+    }
+    airings = parse_browse(payload, fallback_minutes=180)
+    event = next(item for item in airings if "Colgate" in item.title)
+    assert event.video_id == "tvYf8e8qKzo"
+    assert event.deeplink == "https://tv.youtube.com/watch/tvYf8e8qKzo?vp=0gEEEgIwAQ%3D%3D"
+
+
 def test_linear_simulcast_beats_espn_plus():
     from datetime import timedelta
 
@@ -510,6 +556,85 @@ def test_upcoming_tab_continuation_and_sports_chip():
     assert chips[0]["params"] == "sports-params"
 
 
+def test_home_unplugged_chips_keep_sports_and_drop_news():
+    from yttv_epg.parse import discover_sports_chips
+
+    payload = {
+        "chips": [
+            {
+                "unpluggedChipRenderer": {
+                    "title": {"simpleText": "Sports"},
+                    "navigationEndpoint": {
+                        "browseEndpoint": {"browseId": "FEunplugged_chips", "params": "sports-params"}
+                    },
+                }
+            },
+            {
+                "unpluggedChipRenderer": {
+                    "title": {"simpleText": "Football"},
+                    "navigationEndpoint": {
+                        "browseEndpoint": {"browseId": "FEunplugged_chips", "params": "football-params"}
+                    },
+                }
+            },
+            {
+                "unpluggedChipRenderer": {
+                    "title": {"simpleText": "News"},
+                    "navigationEndpoint": {
+                        "browseEndpoint": {"browseId": "FEunplugged_chips", "params": "news-params"}
+                    },
+                }
+            },
+            {
+                "unpluggedChipRenderer": {
+                    "title": {"simpleText": "CNN"},
+                    "navigationEndpoint": {
+                        "browseEndpoint": {"browseId": "FEunplugged_chips", "params": "cnn-params"}
+                    },
+                }
+            },
+        ]
+    }
+    chips = discover_sports_chips(payload)
+    assert [(c["title"], c["params"]) for c in chips] == [
+        ("Sports", "sports-params"),
+        ("Football", "football-params"),
+    ]
+
+
+def test_local_news_at_time_is_not_an_event():
+    payload = {
+        "epgAiringRenderer": {
+            "title": {"simpleText": "FOX 2 Newsedge at 11pm"},
+            "station": {
+                "epgStationRenderer": {
+                    "icon": {"accessibility": {"accessibilityData": {"label": "FOX 2"}}}
+                }
+            },
+            "navigationEndpoint": {"watchEndpoint": {"videoId": "fox2newsxx1"}},
+        }
+    }
+    airings = parse_browse(payload, fallback_minutes=60)
+    assert all(item.kind != "event" for item in airings)
+
+
+def test_nba_playback_is_not_an_event():
+    payload = {
+        "epgAiringRenderer": {
+            "title": {"simpleText": "NBA Playback"},
+            "station": {
+                "epgStationRenderer": {
+                    "icon": {"accessibility": {"accessibilityData": {"label": "NBA TV"}}}
+                }
+            },
+            "navigationEndpoint": {"watchEndpoint": {"videoId": "nbaplaybac1"}},
+        }
+    }
+    airings = parse_browse(payload, fallback_minutes=60)
+    assert airings
+    assert airings[0].kind != "event"
+
+
 def test_same_matchup_on_different_days_is_kept():
     from datetime import timedelta
 
@@ -538,3 +663,64 @@ def test_same_matchup_on_different_days_is_kept():
     )
     merged = merge_airings([first, second])
     assert {item.video_id for item in merged} == {"saturdaygm1", "sundaygame1"}
+
+
+def test_unplugged_game_card_becomes_saturday_football_event():
+    payload = {
+        "unpluggedGameCardRenderer": {
+            "header": {
+                "unpluggedGameCardMatchupHeaderRenderer": {
+                    "startTeamPrimaryText": {
+                        "runs": [{"text": "PSU"}],
+                        "accessibility": {
+                            "accessibilityData": {"label": "Penn State Nittany Lions football"}
+                        },
+                    },
+                    "endTeamPrimaryText": {
+                        "runs": [{"text": "TEM"}],
+                        "accessibility": {
+                            "accessibilityData": {"label": "Temple Owls football"}
+                        },
+                    },
+                }
+            },
+            "primaryText": {"runs": [{"text": "Sep 12 • ESPN2"}]},
+            "secondaryText": {"runs": [{"text": "NCAA Football"}]},
+        }
+    }
+    now = datetime(2026, 9, 9, 23, 0, tzinfo=timezone.utc)
+    airings = parse_browse(payload, now=now, fallback_minutes=180)
+    assert len(airings) == 1
+    event = airings[0]
+    assert event.kind == "event"
+    assert event.title == "Penn State Nittany Lions at Temple Owls"
+    assert event.station == "ESPN2"
+    assert event.sport == "Football"
+    assert event.watch_id() == ""
+    assert event.start.astimezone(timezone.utc).day == 12
+
+
+def test_game_card_tomorrow_network_becomes_event():
+    payload = {
+        "unpluggedGameCardRenderer": {
+            "header": {
+                "unpluggedGameCardMatchupHeaderRenderer": {
+                    "startTeamPrimaryText": {
+                        "accessibility": {"accessibilityData": {"label": "Florida A&M Rattlers football"}}
+                    },
+                    "endTeamPrimaryText": {
+                        "accessibility": {"accessibilityData": {"label": "Miami Hurricanes football"}}
+                    },
+                }
+            },
+            "primaryText": {"runs": [{"text": "Tomorrow • ACC Network"}]},
+            "secondaryText": {"runs": [{"text": "NCAA Football"}]},
+        }
+    }
+    now = datetime(2026, 9, 10, 16, 0, tzinfo=timezone.utc)
+    airings = parse_browse(payload, now=now, fallback_minutes=180)
+    assert len(airings) == 1
+    event = airings[0]
+    assert event.title == "Florida A&M Rattlers at Miami Hurricanes"
+    assert event.station == "ACC Network"
+    assert event.start.astimezone(timezone.utc).date().isoformat() == "2026-09-11"

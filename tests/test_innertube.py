@@ -171,7 +171,10 @@ async def test_hub_401_aborts_client_and_tries_fallback(patched_pages, monkeypat
 def test_session_expired_message_detects_innertube_401():
     assert session_expired_message("YTTV session expired. Sign in again on tv.youtube.com.")
     assert session_expired_message("HTTP 401")
+    assert not session_expired_message("HTTP 403")
+    assert not session_expired_message("WEB_UNPLUGGED https://tv.youtube.com/youtubei/v1/browse returned HTTP 403")
     assert not session_expired_message("ESPN schedule timed out")
+    assert not session_expired_message("Guide refresh failed. YouTube TV is still signed in.")
     assert not session_expired_message("")
 
 
@@ -211,3 +214,156 @@ async def test_resolve_soon_runs_pending_entity_browses(patched_pages):
     by_title = {item.title: item for item in out}
     assert by_title["East Carolina at Alabama"].watch_id() == "resolvedxx1"
     assert by_title["UConn vs Maryland"].watch_id() == "abcdefghijk"
+
+
+@pytest.mark.asyncio
+async def test_home_sports_chips_are_mined_with_distinct_params(patched_pages):
+    seen: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        browse_id = str(body.get("browseId") or "")
+        params = str(body.get("params") or "")
+        if browse_id:
+            seen.append((browse_id, params))
+        if browse_id == "FEunplugged_epg":
+            return httpx.Response(
+                200,
+                json={"contents": [_card("abcdefghijk", "Alabama vs Auburn")]},
+            )
+        if browse_id == "FEunplugged_home":
+            return httpx.Response(
+                200,
+                json={
+                    "contents": [
+                        {
+                            "unpluggedChipRenderer": {
+                                "title": {"simpleText": "Sports"},
+                                "navigationEndpoint": {
+                                    "browseEndpoint": {
+                                        "browseId": "FEunplugged_chips",
+                                        "params": "sports-params",
+                                    }
+                                },
+                            }
+                        },
+                        {
+                            "unpluggedChipRenderer": {
+                                "title": {"simpleText": "Tennis"},
+                                "navigationEndpoint": {
+                                    "browseEndpoint": {
+                                        "browseId": "FEunplugged_chips",
+                                        "params": "tennis-params",
+                                    }
+                                },
+                            }
+                        },
+                        {
+                            "unpluggedChipRenderer": {
+                                "title": {"simpleText": "News"},
+                                "navigationEndpoint": {
+                                    "browseEndpoint": {
+                                        "browseId": "FEunplugged_chips",
+                                        "params": "news-params",
+                                    }
+                                },
+                            }
+                        },
+                    ]
+                },
+            )
+        if browse_id == "FEunplugged_chips" and params == "sports-params":
+            return httpx.Response(200, json={"contents": [_card("sportschip1", "Ohio State at Texas")]})
+        if browse_id == "FEunplugged_chips" and params == "tennis-params":
+            return httpx.Response(200, json={"contents": [_card("tennischip1", "Court 4", "ESPN Unlimited")]})
+        return httpx.Response(200, json={"contents": [_card("bbbbbbbbbbb", "Hub game")]})
+
+    innertube = _client_for(handler)
+    result = await innertube.mine(SESSION)
+    assert ("FEunplugged_home", "") in seen
+    assert ("FEunplugged_chips", "sports-params") in seen
+    assert ("FEunplugged_chips", "tennis-params") in seen
+    assert ("FEunplugged_chips", "news-params") not in seen
+    titles = {item.title for item in result.airings}
+    assert "Ohio State at Texas" in titles
+    assert "Court 4" in titles
+
+
+@pytest.mark.asyncio
+async def test_hub_403_keeps_epg_and_is_not_expiry(patched_pages, monkeypatch):
+    monkeypatch.setattr("yttv_epg.innertube.CLIENTS", (CLIENTS[0],))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        browse_id = str(body.get("browseId") or "")
+        if browse_id == "FEunplugged_epg":
+            return httpx.Response(
+                200,
+                json={"contents": [_card("abcdefghijk", "Alabama vs Auburn"), _station(HUBS[0])]},
+            )
+        return httpx.Response(403, json={"error": {"message": "rate limited"}})
+
+    innertube = _client_for(handler)
+    result = await innertube.mine(SESSION)
+    assert any(item.video_id == "abcdefghijk" for item in result.airings)
+
+
+@pytest.mark.asyncio
+async def test_browser_post_is_used_instead_of_httpx(patched_pages):
+    http_calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        http_calls.append(str(request.url))
+        return httpx.Response(500, json={"error": {"message": "httpx should not run"}})
+
+    async def browser_post(url: str, headers: dict, payload: dict):
+        browse_id = str(payload.get("browseId") or "")
+        if browse_id == "FEunplugged_epg":
+            return 200, {"contents": [_card("abcdefghijk", "Alabama vs Auburn")]}
+        return 200, {"contents": [_card("bbbbbbbbbbb", "Hub game")]}
+
+    innertube = _client_for(handler)
+    innertube.set_browser_post(browser_post)
+    result = await innertube.mine(SESSION)
+    assert http_calls == []
+    assert any(item.video_id == "abcdefghijk" for item in result.airings)
+
+
+@pytest.mark.asyncio
+async def test_browser_post_error_falls_back_to_httpx(patched_pages):
+    from yttv_epg.chrome import ChromeError
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        if body.get("browseId") == "FEunplugged_epg":
+            return httpx.Response(200, json={"contents": [_card("abcdefghijk", "Alabama vs Auburn")]})
+        return httpx.Response(200, json={"contents": [_card("bbbbbbbbbbb", "Hub game")]})
+
+    async def browser_post(url: str, headers: dict, payload: dict):
+        raise ChromeError("Chromium has no tv.youtube.com tab for guide requests.")
+
+    innertube = _client_for(handler)
+    innertube.set_browser_post(browser_post)
+    result = await innertube.mine(SESSION)
+    assert any(item.video_id == "abcdefghijk" for item in result.airings)
+
+
+@pytest.mark.asyncio
+async def test_browser_post_401_falls_back_to_httpx(patched_pages):
+    http_calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        http_calls.append(str(request.url))
+        body = json.loads(request.content)
+        if body.get("browseId") == "FEunplugged_epg":
+            return httpx.Response(200, json={"contents": [_card("abcdefghijk", "Alabama vs Auburn")]})
+        return httpx.Response(200, json={"contents": [_card("bbbbbbbbbbb", "Hub game")]})
+
+    async def browser_post(url: str, headers: dict, payload: dict):
+        return 401, {"error": {"message": "unauthorized"}}
+
+    innertube = _client_for(handler)
+    innertube.set_browser_post(browser_post)
+    result = await innertube.mine(SESSION)
+    assert http_calls
+    assert any(item.video_id == "abcdefghijk" for item in result.airings)

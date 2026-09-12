@@ -274,3 +274,14 @@ def test_resolve_sport_keeps_stored_volleyball_over_school_name_football():
     assert resolve_sport("Elon vs. Eastern Michigan", "ESPN", stored="Volleyball") == "Volleyball"
     assert resolve_sport("Liberty vs. James Madison", "ESPNU", stored="Football") == "Football"
     assert resolve_sport("Fairleigh Dickinson vs. Lafayette", "ESPN+", stored="Rugby") == "Rugby"
+
+
+def test_espn_fills_placeholder_kickoff_from_team_names():
+    noon = datetime(2026, 9, 12, 16, 0, tzinfo=timezone.utc)
+    kickoff = datetime(2026, 9, 12, 19, 30, tzinfo=timezone.utc)
+    rows = apply_espn_sports(
+        [_airing("Penn State Nittany Lions at Temple Owls", "ESPN2", noon, "Football")],
+        [EspnListing("Penn State vs Temple", "Football", kickoff)],
+    )
+    assert rows[0].start == kickoff
+    assert rows[0].sport == "Football"

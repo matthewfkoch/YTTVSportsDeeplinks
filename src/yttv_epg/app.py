@@ -19,7 +19,8 @@ from yttv_epg.branding import EYEBROW, PRODUCT_NAME, for_ui
 from yttv_epg.catalog import Catalog
 from yttv_epg.chrome import ChromeError, available as chrome_available
 from yttv_epg.chrome import chrome_signed_in, clear_browser_cookies, fetch_cookies
-from yttv_epg.chrome import open_youtube_tv, prune_chrome_profile, prune_non_youtube_cookies, status as chrome_status
+from yttv_epg.chrome import innertube_post, keepalive_youtube_tv, open_youtube_tv
+from yttv_epg.chrome import prune_chrome_profile, status as chrome_status
 from yttv_epg.config import settings
 from yttv_epg.display import format_refresh, group_events_for_ui, local_tz
 from yttv_epg.espn_schedule import apply_espn_sports, fetch_espn_schedule
@@ -33,6 +34,7 @@ from yttv_epg.sports import (
     channel_counts,
     is_non_sports_station,
     is_sports_event,
+    is_upcoming_linear_matchup,
     sport_counts,
     toggle_name,
     visible_events,
@@ -95,14 +97,17 @@ def _ensure_session() -> SavedSession:
 
 def _with_espn_sports(events: Optional[list[Airing]] = None) -> list[Airing]:
     rows = events if events is not None else state.catalog.events(kind="event")
-    return apply_espn_sports(merge_airings(rows), state.espn_listings)
+    return merge_airings(apply_espn_sports(merge_airings(rows), state.espn_listings))
 
 
 def _watchable_events(events: Optional[list[Airing]] = None) -> list[Airing]:
     return [
         item
         for item in _with_espn_sports(events)
-        if item.watch_id()
+        if (
+            item.watch_id()
+            or is_upcoming_linear_matchup(item.station, item.title)
+        )
         and not is_non_sports_station(item.station)
         and is_sports_event(item.station, item.title, item.sport)
     ]
@@ -210,20 +215,36 @@ def _session_view(meta: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     }
 
 
-async def _clear_expired_chrome() -> None:
+async def _browser_innertube_post(
+    url: str,
+    headers: dict[str, str],
+    payload: dict[str, Any],
+) -> tuple[int, Any]:
+    return await innertube_post(state.http, settings.cdp_url, url, headers, payload)
+
+
+async def _touch_chrome_login() -> None:
     if not settings.enable_chrome:
         return
     try:
         if await chrome_available(state.http, settings.cdp_url):
-            await clear_browser_cookies(state.http, settings.cdp_url)
+            await keepalive_youtube_tv(state.http, settings.cdp_url)
     except (ChromeError, httpx.HTTPError, RuntimeError):
         return
 
 
 async def _mark_refresh_failure(exc: Exception) -> None:
-    state.catalog.set_error(str(exc))
-    if isinstance(exc, MineError) and session_expired_message(str(exc)):
-        await _clear_expired_chrome()
+    message = str(exc)
+    if session_expired_message(message) and settings.enable_chrome:
+        try:
+            cookies = await fetch_cookies(state.http, settings.cdp_url)
+            if chrome_signed_in(cookies):
+                await _sync_session_from_chrome()
+                state.catalog.set_error("Guide refresh failed. YouTube TV is still signed in.")
+                return
+        except (ChromeError, httpx.HTTPError, RuntimeError):
+            pass
+    state.catalog.set_error(message)
 
 
 def _public_base_url(request: Request) -> str:
@@ -245,18 +266,20 @@ async def _sync_session_from_chrome() -> bool:
         cookies = await fetch_cookies(state.http, settings.cdp_url)
         if not chrome_signed_in(cookies):
             return False
-        cookies = await prune_non_youtube_cookies(state.http, settings.cdp_url, cookies)
         cookies = require_youtube_tv_cookies(cookies)
     except (ChromeError, CookieError, httpx.HTTPError):
         return False
     state.session = SavedSession(kind="cookies", cookies=cookies)
     state.store.save(state.session)
+    state.innertube.set_browser_post(_browser_innertube_post)
     return True
 
 
 async def _activate_cookies(cookies: list[dict[str, str]]) -> dict[str, Any]:
     cookies = require_youtube_tv_cookies(cookies)
     session = SavedSession(kind="cookies", cookies=cookies)
+    if settings.enable_chrome:
+        state.innertube.set_browser_post(_browser_innertube_post)
     try:
         client_name = await state.innertube.probe(session)
     except MineError as exc:
@@ -265,6 +288,7 @@ async def _activate_cookies(cookies: list[dict[str, str]]) -> dict[str, Any]:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     state.session = session
     state.store.save(session)
+    state.catalog.clear_error()
     try:
         result = await refresh_catalog()
     except Exception as exc:
@@ -301,6 +325,7 @@ async def refresh_catalog() -> dict[str, Any]:
     state.refreshing = True
     try:
         async with state.refresh_lock:
+            await _touch_chrome_login()
             await _sync_session_from_chrome()
             await _refresh_espn_listings()
             session = _ensure_session()
@@ -309,9 +334,11 @@ async def refresh_catalog() -> dict[str, Any]:
             except (MineError, httpx.HTTPError) as exc:
                 await _mark_refresh_failure(exc)
                 raise
-            events = apply_espn_sports(
-                merge_airings(item for item in mined.airings if item.kind == "event"),
-                state.espn_listings,
+            events = merge_airings(
+                apply_espn_sports(
+                    merge_airings(item for item in mined.airings if item.kind == "event"),
+                    state.espn_listings,
+                )
             )
             visible = _visible_events(events)
             watchable = _watchable_events(events)
@@ -329,6 +356,7 @@ async def refresh_catalog() -> dict[str, Any]:
             )
             _set_lane_cache(assignments)
             state.last_full_mine_at = datetime.now(timezone.utc)
+            await _sync_session_from_chrome()
             if settings.allow_debug:
                 state.catalog.save_debug(settings.data_dir, "last_browse.json", mined.raw)
             return {
@@ -367,6 +395,7 @@ async def refresh_watch_ids() -> dict[str, Any]:
     state.refreshing = True
     try:
         async with state.refresh_lock:
+            await _touch_chrome_login()
             await _sync_session_from_chrome()
             espn_changed = await _refresh_espn_listings()
             session = _ensure_session()
@@ -385,6 +414,7 @@ async def refresh_watch_ids() -> dict[str, Any]:
                         pairs.append((previous, updated))
             if pairs:
                 state.catalog.replace_resolved(pairs)
+                await _sync_session_from_chrome()
             if pairs or espn_changed:
                 visible = _visible_events()
                 _store_lanes(
@@ -422,6 +452,7 @@ async def refresh_loop() -> None:
             except Exception:
                 delay = 60
         elif settings.enable_chrome:
+            await _touch_chrome_login()
             await _sync_session_from_chrome()
             delay = 30
         else:
@@ -580,7 +611,6 @@ async def auth_chrome_capture() -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="In-container Chromium is disabled.")
     try:
         cookies = await fetch_cookies(state.http, settings.cdp_url)
-        cookies = await prune_non_youtube_cookies(state.http, settings.cdp_url, cookies)
         return await _activate_cookies(cookies)
     except CookieError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -599,6 +629,7 @@ async def auth_logout() -> dict[str, bool]:
     state.session = None
     state.store.clear()
     state.catalog.clear_error()
+    state.innertube.set_browser_post(None)
     return {"ok": True}
 
 
@@ -674,7 +705,7 @@ async def list_events(kind: str = Query("event")) -> dict[str, Any]:
             for item in _with_espn_sports(rows)
             if item.kind == "linear"
             or (
-                item.watch_id()
+                (item.watch_id() or is_upcoming_linear_matchup(item.station, item.title))
                 and not is_non_sports_station(item.station)
                 and is_sports_event(item.station, item.title, item.sport)
             )

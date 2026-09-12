@@ -49,7 +49,7 @@
         {% endif %}
       </div>
       <div id="idle-auth" {% if signed_in and not session_expired %}hidden{% endif %}>
-        <p class="muted">Use a <strong>dedicated YTTV Google account</strong> on <strong>tv.youtube.com</strong>—not the account you use for Gmail or other Google services. Signing in at youtube.com/tv will not work. The session is stored in this container.</p>
+        <p class="muted">Use a <strong>dedicated YTTV Google account</strong> on <strong>tv.youtube.com</strong>—not the account you use for Gmail or other Google services. If Google sends you to youtube.com/tv or an update-package screen, this page will bounce the tab back to tv.youtube.com. The session is stored in this container.</p>
         {% if chrome_enabled %}
         <div id="desktop-wrap">
           <div class="row">
@@ -166,7 +166,11 @@
               <td>{{ event.title }}</td>
               <td>{{ event.station or event.channel or "—" }}{% if event.channel and event.station and event.channel != event.station %}<div class="muted">{{ event.channel }}</div>{% endif %}</td>
               <td>
+                {% if event.deeplink %}
                 <a href="{{ event.deeplink }}">Watch</a>
+                {% else %}
+                <span class="muted">Soon</span>
+                {% endif %}
               </td>
             </tr>
             {% endfor %}
@@ -185,6 +189,6 @@
     <span class="toast-spinner" aria-hidden="true"></span>
     <span id="refresh-toast-text">Refreshing the guide…</span>
   </div>
-  <script src="/static/app.js?v=refresh-8"></script>
+  <script src="/static/app.js?v=refresh-10"></script>
 </body>
 </html>

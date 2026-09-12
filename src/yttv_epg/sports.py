@@ -15,6 +15,7 @@ MONTH_DAY_RE = re.compile(
 )
 MATCHUP_VS_RE = re.compile(r"\s+vs\.?\s+", re.I)
 MATCHUP_AT_RE = re.compile(r"\s+at\s+", re.I)
+MATCHUP_AT_TIME_RE = re.compile(r"\s+at\s+\d", re.I)
 DAY_ONLY_RE = re.compile(r"^DAY\s+\d+$", re.I)
 PAST_SEASON_RE = re.compile(r"^(20\d{2})(?:\s*:|\s+(?:NFC|AFC)\b)")
 YEAR_PREFIX_RE = re.compile(r"^(20\d{2})\b")
@@ -77,6 +78,14 @@ STUDIO_SHOW_HINTS = (
     "WRAP UP",
     "WRAP-UP",
     "WORLD AT WAR",
+    "PLAYBACK",
+    "NFL FILMS",
+    "FILMS PRESENTS",
+    "FANTASY LIVE",
+    "THE ASSOCIATION",
+    "THE DIFFERENCE",
+    " IN 60",
+    "HALFTIME BAND",
 )
 
 MOVIE_AT_HINTS = (
@@ -183,6 +192,62 @@ SPORT_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Studio", ("SPORTSCENTER", "SCOREBOARD", "GAMEDAY", "STUDIO")),
 )
 
+# Team-sport linear hours need a vs/at matchup. Tournament circuits often do not.
+TOURNAMENT_SPORTS = {
+    "Tennis",
+    "Golf",
+    "Motorsports",
+    "Horse Racing",
+    "Fishing",
+    "Combat",
+    "Track",
+    "Gymnastics",
+    "Swimming",
+    "Disc Golf",
+}
+
+SPORT_CHIP_LABELS = {
+    "SPORTS",
+    "SPORT",
+    "FOOTBALL",
+    "SOCCER",
+    "BASKETBALL",
+    "BASEBALL",
+    "HOCKEY",
+    "TENNIS",
+    "GOLF",
+    "NFL",
+    "NCAAF",
+    "CFB",
+    "NBA",
+    "MLB",
+    "NHL",
+    "WNBA",
+    "MLS",
+    "NASCAR",
+    "UFC",
+    "MMA",
+    "WWE",
+    "F1",
+    "FORMULA 1",
+    "MOTORSPORTS",
+    "MOTORSPORT",
+    "RUGBY",
+    "CRICKET",
+    "LACROSSE",
+    "VOLLEYBALL",
+    "SOFTBALL",
+    "WRESTLING",
+    "BOXING",
+    "COLLEGE FOOTBALL",
+    "COLLEGE BASKETBALL",
+    "HORSE RACING",
+    "LIVE",
+    "UPCOMING",
+    "SCHEDULE",
+    "EVENTS",
+}
+
 SPORTS_HUB_STATIONS = {
     "ACC NETWORK",
     "BTN",
@@ -255,7 +320,14 @@ TENNIS_ROUND_RE = re.compile(
 )
 TENNIS_SEED_RE = re.compile(r"\(\d{1,2}\)\s+\S.+\s+vs", re.I)
 TENNIS_DOUBLES_RE = re.compile(r"\b[\w'.-]+/[\w'.-]+\s+vs", re.I)
-TENNIS_COURT_RE = re.compile(r"^COURT\s+\d+$", re.I)
+TENNIS_COURT_RE = re.compile(
+    r"^(?:COURT\s+(?:\d+|TBC)|GRANDSTAND|STADIUM\s+\d+)$",
+    re.I,
+)
+TENNIS_VENUE_RE = re.compile(
+    r"\b(?:LOUIS ARMSTRONG STADIUM|ARTHUR ASHE STADIUM|BILLIE JEAN KING)\b",
+    re.I,
+)
 
 HOCKEY_NATIONS = ("CZECHIA", "CZECH REPUBLIC", "FINLAND", "SWEDEN", "SLOVAKIA")
 HOCKEY_NATION_STATIONS = ("TRUTV", "TRU TV", "TNT", "NHL NETWORK")
@@ -421,6 +493,17 @@ def is_sports_hub_label(station: str) -> bool:
     return False
 
 
+def is_sports_chip_title(title: str) -> bool:
+    upper = norm_name(title)
+    if not upper:
+        return False
+    if re.search(r"\bNEWS\b", upper):
+        return False
+    if upper in SPORT_CHIP_LABELS:
+        return True
+    return "SPORT" in upper
+
+
 def parse_sport_list(value: str) -> list[str]:
     return [part.strip() for part in (value or "").split(",") if part.strip()]
 
@@ -431,7 +514,7 @@ def is_junk(title: str, station: str = "") -> bool:
         return True
     if "WATCH LIVE SPORTS" in title_u or title_u.startswith("WATCH ON "):
         return True
-    if "NEWS AT" in title_u or re.search(r"\bNEWS\b", title_u):
+    if "NEWS AT" in title_u or "NEWSEDGE" in title_u or re.search(r"\bNEWS\b", title_u):
         return True
     if re.search(r"\bRADIO\b", title_u):
         return True
@@ -457,6 +540,8 @@ def is_matchup(title: str) -> bool:
     if MATCHUP_VS_RE.search(title):
         return True
     if not MATCHUP_AT_RE.search(title):
+        return False
+    if MATCHUP_AT_TIME_RE.search(title):
         return False
     upper = norm_name(title)
     return not any(hint in upper for hint in MOVIE_AT_HINTS)
@@ -595,6 +680,8 @@ def resolve_sport(title: str, station: str = "", stored: str = "", shelf: str = 
 
 def _looks_like_tennis(title: str) -> bool:
     if TENNIS_COURT_RE.match(norm_name(title)):
+        return True
+    if TENNIS_VENUE_RE.search(title or ""):
         return True
     if TENNIS_ROUND_RE.search(title or ""):
         return True
@@ -893,19 +980,18 @@ def _is_sports_event_cached(station: str, title: str, sport: str, tab: str, year
     _ = year
     if is_junk(title, station) or is_non_sports_station(station) or is_studio_show(title):
         return False
-    if is_extra_station(station) or is_digital_extra(station, title):
-        return True
-    if is_matchup(title):
-        return True
     own_sport = infer_sport(title, station)
     if own_sport == "Studio":
         return False
-    if own_sport and own_sport not in {"", "Other"}:
+    if is_matchup(title):
+        return True
+    if is_extra_station(station) or is_digital_extra(station, title):
+        return bool(own_sport and own_sport not in {"", "Other", "Studio"})
+    if own_sport in TOURNAMENT_SPORTS:
         return True
     tab_u = tab.strip().upper()
-    if tab_u in {"LIVE", "UPCOMING", "SCHEDULE", "EVENTS"} and sport and sport not in {"", "Other"}:
-        return True
-    if is_sports_hub_label(station) and sport and sport not in {"", "Other", "Studio"}:
+    stored = sport if sport not in {"", "Other", "Studio"} else ""
+    if tab_u in {"LIVE", "UPCOMING", "SCHEDULE", "EVENTS"} and stored in TOURNAMENT_SPORTS:
         return True
     return False
 
@@ -927,6 +1013,14 @@ def has_watch_link(item: Any) -> bool:
         return bool(method())
     deeplink = str(getattr(item, "deeplink", "") or "")
     return "/watch/" in deeplink
+
+
+def is_upcoming_linear_matchup(station: str, title: str) -> bool:
+    if not is_matchup(title):
+        return False
+    if is_espn_plus(station, title) or is_extra_station(station):
+        return False
+    return True
 
 
 def visible_events(

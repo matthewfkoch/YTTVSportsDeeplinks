@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Optional
+from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 from yttv_epg.sports import (
     clean_station,
@@ -14,6 +16,7 @@ from yttv_epg.sports import (
     is_extra_station,
     is_junk,
     is_matchup,
+    is_sports_chip_title,
     is_sports_event,
     is_sports_hub_label,
     is_unusable_channel_label,
@@ -23,6 +26,8 @@ from yttv_epg.sports import (
 
 VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 ENTITY_ID_RE = re.compile(r"^UC[A-Za-z0-9_-]{20,}$")
+GAME_WHEN_SPLIT_RE = re.compile(r"\s*[•·|]\s*")
+TRAILING_FOOTBALL_RE = re.compile(r"\s+football$", re.I)
 
 LINEAR_STATIONS = {
     "ABC",
@@ -123,6 +128,7 @@ def _prefer_linear_simulcasts(airings: list[Airing]) -> list[Airing]:
         airings,
         key=lambda item: (
             0 if item.watch_id() else 1,
+            0 if "?vp=" in item.deeplink else 1,
             outlet_rank(item.station, item.title, item.channel),
             -len(item.title),
             item.video_id,
@@ -167,12 +173,16 @@ def _airing_key(airing: Airing) -> tuple[str, str, int]:
         return ("video", watch, start)
     if airing.entity_id:
         return ("entity", airing.entity_id, start)
-    return ("video", airing.video_id, start)
+    return ("title", f"{airing.title}|{airing.station}", start)
 
 
 def _better_airing(candidate: Airing, current: Airing) -> bool:
     if bool(candidate.watch_id()) != bool(current.watch_id()):
         return bool(candidate.watch_id())
+    cand_vp = "?vp=" in candidate.deeplink
+    cur_vp = "?vp=" in current.deeplink
+    if cand_vp != cur_vp:
+        return cand_vp
     cand_rank = outlet_rank(candidate.station, candidate.title, candidate.channel)
     cur_rank = outlet_rank(current.station, current.title, current.channel)
     if cand_rank != cur_rank:
@@ -217,12 +227,21 @@ def _walk(
         return
 
     next_ctx = _context_from_node(node, ctx)
-    video_id = _video_id_from_node(node)
+    watch_ep = _watch_endpoint_from_node(node)
+    video_id = _video_id_from_watch(watch_ep) or _bare_video_id(node)
+    watch_params = _watch_params(watch_ep)
     entity_id = _entity_id_from_node(node)
     if entity_id:
         next_ctx = next_ctx.child(entity_id=entity_id)
     if video_id or _is_schedule_card(node, entity_id, next_ctx):
-        airing = _to_airing(video_id or entity_id or "", next_ctx, now, fallback_minutes, source)
+        airing = _to_airing(
+            video_id or entity_id or "",
+            next_ctx,
+            now,
+            fallback_minutes,
+            source,
+            watch_params=watch_params,
+        )
         if airing.video_id and not is_junk(airing.title, next_ctx.station):
             yield airing
 
@@ -252,7 +271,14 @@ def _walk(
         yield from _walk(node["unpluggedVideoRenderer"], next_ctx, now, fallback_minutes, source)
         return
     if "unpluggedGameCardRenderer" in node and isinstance(node["unpluggedGameCardRenderer"], dict):
-        yield from _walk(node["unpluggedGameCardRenderer"], next_ctx, now, fallback_minutes, source)
+        airing = _airing_from_game_card(
+            node["unpluggedGameCardRenderer"], next_ctx, now, fallback_minutes, source
+        )
+        if airing is not None:
+            yield airing
+        return
+    if "unpluggedHomeItemRenderer" in node and isinstance(node["unpluggedHomeItemRenderer"], dict):
+        yield from _walk(node["unpluggedHomeItemRenderer"], next_ctx, now, fallback_minutes, source)
         return
 
     for value in node.values():
@@ -301,6 +327,7 @@ def _to_airing(
     now: datetime,
     fallback_minutes: int,
     source: str,
+    watch_params: str = "",
 ) -> Airing:
     title = (ctx.title or ctx.station or f"YTTV {video_id}").strip()
     if is_unusable_channel_label(title):
@@ -322,13 +349,168 @@ def _to_airing(
         kind=kind,
         start=_as_utc(start),
         end=_as_utc(end),
-        deeplink=f"https://tv.youtube.com/watch/{watch}" if watch else "",
+        deeplink=watch_deeplink(watch, watch_params),
         live=ctx.live or start <= now < end,
         source=source,
         sport=ctx.sport or infer_sport(title, station),
         entity_id=entity_id,
         channel=infer_channel(station, title),
     )
+
+
+def _airing_from_game_card(
+    card: dict[str, Any],
+    ctx: _WalkCtx,
+    now: datetime,
+    fallback_minutes: int,
+    source: str,
+) -> Optional[Airing]:
+    when_text = _text(card.get("primaryText"))
+    secondary = _text(card.get("secondaryText"))
+    away, home = _game_card_teams(card)
+    if away and home:
+        title = f"{away} at {home}"
+        station = _station_from_game_when(when_text) or _station_from_secondary(secondary, card) or ctx.station
+        sport_hint = secondary
+    elif is_matchup(when_text):
+        title = when_text
+        station = _station_from_secondary(secondary, card) or clean_station(secondary) or ctx.station
+        sport_hint = secondary if station != secondary else ctx.sport
+    else:
+        return None
+    if is_junk(title, station):
+        return None
+    start = (
+        _time_from_node(card, ("startTime", "startTimeUtc", "startTimeSeconds", "beginTimeMs"))
+        or _parse_game_card_start(when_text, now)
+    )
+    if start is None:
+        if _is_live(card):
+            start = now
+        else:
+            return None
+    end = _time_from_node(card, ("endTime", "endTimeUtc", "endTimeSeconds", "endTimeMs"))
+    if end is None or end <= start:
+        end = start + timedelta(minutes=fallback_minutes)
+    sport = sport_hint or ctx.sport
+    if sport:
+        inferred = infer_sport(f"{sport} {title}", station)
+        sport = inferred if inferred != "Other" else (ctx.sport or inferred)
+    watch_ep = _watch_endpoint_from_node(card)
+    video_id = _video_id_from_watch(watch_ep) or _bare_video_id(card) or ""
+    entity_id = _entity_id_from_node(card) or _game_card_entity(card)
+    stored_id = video_id if _ok_video_id(video_id) else f"{title}|{station}|{int(_as_utc(start).timestamp())}"
+    return _to_airing(
+        stored_id,
+        _WalkCtx(
+            title=title,
+            station=station,
+            start=start,
+            end=end,
+            live=_is_live(card),
+            sport=sport or "",
+            tab=ctx.tab,
+            entity_id=entity_id,
+        ),
+        now,
+        fallback_minutes,
+        source,
+        watch_params=_watch_params(watch_ep),
+    )
+
+
+def _game_card_teams(card: dict[str, Any]) -> tuple[str, str]:
+    found: list[tuple[str, str]] = []
+
+    def walk(node: Any, depth: int = 0) -> None:
+        if found or depth > 8 or not isinstance(node, (dict, list)):
+            return
+        if isinstance(node, list):
+            for item in node:
+                walk(item, depth + 1)
+            return
+        start = node.get("startTeamPrimaryText")
+        end = node.get("endTeamPrimaryText")
+        if start is not None or end is not None:
+            away = _game_team_name(start)
+            home = _game_team_name(end)
+            if away and home:
+                found.append((away, home))
+                return
+        for key, value in node.items():
+            if key in {"thumbnail", "thumbnails", "trackingParams", "menu"}:
+                continue
+            walk(value, depth + 1)
+
+    walk(card)
+    return found[0] if found else ("", "")
+
+
+def _game_team_name(node: Any) -> str:
+    if not isinstance(node, dict):
+        return TRAILING_FOOTBALL_RE.sub("", _text(node)).strip()
+    acc = _dig(node, ("accessibility", "accessibilityData", "label"))
+    name = acc.strip() if isinstance(acc, str) and acc.strip() else _text(node)
+    return TRAILING_FOOTBALL_RE.sub("", name).strip()
+
+
+def _station_from_game_when(text: str) -> str:
+    parts = [part.strip() for part in GAME_WHEN_SPLIT_RE.split(text or "") if part.strip()]
+    if len(parts) < 2:
+        return clean_station(text)
+    return clean_station(parts[-1])
+
+
+def _parse_game_card_start(text: str, now: datetime) -> Optional[datetime]:
+    parts = [part.strip() for part in GAME_WHEN_SPLIT_RE.split(text or "") if part.strip()]
+    when = parts[0] if parts else (text or "").strip()
+    if not when:
+        return None
+    zone = ZoneInfo("America/New_York")
+    local = now.astimezone(zone)
+    when = re.sub(r"^(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s+", "", when, flags=re.I)
+    lowered = when.lower()
+    if lowered == "today":
+        day = local.date()
+    elif lowered == "tomorrow":
+        day = local.date() + timedelta(days=1)
+    else:
+        parsed = None
+        for fmt in ("%b %d", "%B %d"):
+            try:
+                parsed = datetime.strptime(when.replace(".", ""), fmt).replace(year=local.year)
+                break
+            except ValueError:
+                parsed = None
+        if parsed is None:
+            return None
+        day = parsed.date()
+        if day < (local.date() - timedelta(days=14)):
+            day = day.replace(year=local.year + 1)
+    return datetime(day.year, day.month, day.day, 12, 0, tzinfo=zone).astimezone(timezone.utc)
+
+
+def _game_card_entity(card: dict[str, Any]) -> str:
+    found: list[str] = []
+
+    def walk(node: Any) -> None:
+        if found or not isinstance(node, (dict, list)):
+            return
+        if isinstance(node, list):
+            for item in node:
+                walk(item)
+            return
+        browse_id = node.get("browseId")
+        if isinstance(browse_id, str) and ENTITY_ID_RE.match(browse_id):
+            found.append(browse_id)
+            return
+        for key, value in node.items():
+            if key in {"thumbnail", "thumbnails", "trackingParams"}:
+                continue
+            walk(value)
+
+    walk(card)
+    return found[0] if found else ""
 
 
 def _classify(station: str, title: str, sport: str = "", tab: str = "") -> str:
@@ -457,6 +639,7 @@ CHIP_RENDERERS = (
     "chipRenderer",
     "unpluggedChipCloudChipRenderer",
     "unpluggedFilterChipRenderer",
+    "unpluggedChipRenderer",
 )
 
 
@@ -476,8 +659,7 @@ def discover_sports_chips(payload: Any) -> list[dict[str, str]]:
             if not isinstance(chip, dict):
                 continue
             title = _text(chip.get("text") or chip.get("title") or chip.get("label"))
-            upper = title.upper()
-            if "SPORT" not in upper and upper not in {"LIVE", "UPCOMING", "SCHEDULE"}:
+            if not is_sports_chip_title(title):
                 continue
             browse_id, params = _browse_request_from(chip)
             key_id = (browse_id, params)
@@ -567,24 +749,99 @@ def _browse_id_from(node: dict[str, Any]) -> str:
     return _browse_request_from(node)[0]
 
 
-def _video_id_from_node(node: dict[str, Any]) -> Optional[str]:
-    direct = node.get("videoId")
-    if _ok_video_id(direct):
-        return str(direct)
+def watch_deeplink(video_id: str, params: str = "") -> str:
+    if not _ok_video_id(video_id):
+        return ""
+    url = f"https://tv.youtube.com/watch/{video_id}"
+    encoded = _vp_query_value(params)
+    if encoded:
+        return f"{url}?vp={encoded}"
+    return url
+
+
+def _vp_query_value(params: str) -> str:
+    text = (params or "").strip()
+    if not text:
+        return ""
+    if "%" in text:
+        return text
+    return quote(text, safe="")
+
+
+def _watch_endpoint_from_node(node: dict[str, Any]) -> Optional[dict[str, Any]]:
     watch = node.get("watchEndpoint")
     if isinstance(watch, dict) and _ok_video_id(watch.get("videoId")):
-        return str(watch["videoId"])
-    nav = node.get("navigationEndpoint")
-    if isinstance(nav, dict):
-        found = _video_id_from_node(nav)
-        if found:
-            return found
-    command = node.get("command")
-    if isinstance(command, dict):
-        found = _video_id_from_node(command)
+        return watch
+    for key in ("navigationEndpoint", "command", "endpoint"):
+        nested = node.get(key)
+        if isinstance(nested, dict):
+            found = _watch_endpoint_from_node(nested)
+            if found:
+                return found
+    popup = node.get("unpluggedPopupEndpoint")
+    if isinstance(popup, dict):
+        found = _watch_endpoint_from_popup(popup)
         if found:
             return found
     return None
+
+
+def _watch_endpoint_from_popup(node: Any) -> Optional[dict[str, Any]]:
+    if isinstance(node, list):
+        for item in node:
+            found = _watch_endpoint_from_popup(item)
+            if found:
+                return found
+        return None
+    if not isinstance(node, dict):
+        return None
+    watch = node.get("watchEndpoint")
+    if isinstance(watch, dict) and _ok_video_id(watch.get("videoId")):
+        return watch
+    items = node.get("items")
+    if isinstance(items, list):
+        found = _watch_endpoint_from_popup(items)
+        if found:
+            return found
+    for key in (
+        "unpluggedPopupEndpoint",
+        "popupRenderer",
+        "unpluggedSelectionMenuDialogRenderer",
+        "unpluggedMenuItemRenderer",
+        "command",
+        "navigationEndpoint",
+    ):
+        nested = node.get(key)
+        if nested is not None:
+            found = _watch_endpoint_from_popup(nested)
+            if found:
+                return found
+    return None
+
+
+def _video_id_from_watch(watch: Optional[dict[str, Any]]) -> Optional[str]:
+    if isinstance(watch, dict) and _ok_video_id(watch.get("videoId")):
+        return str(watch["videoId"])
+    return None
+
+
+def _watch_params(watch: Optional[dict[str, Any]]) -> str:
+    if not isinstance(watch, dict):
+        return ""
+    params = watch.get("params")
+    return str(params) if isinstance(params, str) else ""
+
+
+def _bare_video_id(node: dict[str, Any]) -> Optional[str]:
+    direct = node.get("videoId")
+    return str(direct) if _ok_video_id(direct) else None
+
+
+def _video_id_from_node(node: dict[str, Any]) -> Optional[str]:
+    found = _video_id_from_watch(_watch_endpoint_from_node(node))
+    if found:
+        return found
+    return _bare_video_id(node)
 
 
 def _ok_video_id(value: Any) -> bool:

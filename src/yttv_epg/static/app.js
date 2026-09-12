@@ -167,9 +167,6 @@ async function watchChromeLogin() {
     return;
   }
   const note = document.getElementById("chrome-note");
-  const waitForFreshLogin = boot.sessionExpired;
-  let opened = false;
-  let sawSignedOut = !waitForFreshLogin;
   while (idleAuth && !idleAuth.hidden) {
     const statusResponse = await fetch("/api/auth/chrome/status");
     const status = statusResponse.ok ? await statusResponse.json() : { available: false };
@@ -180,17 +177,15 @@ async function watchChromeLogin() {
       await new Promise((resolve) => setTimeout(resolve, 15000));
       continue;
     }
-    if (!opened) {
-      await fetch("/api/auth/chrome/open", { method: "POST" });
-      opened = true;
-    }
-    if (!status.signed_in) {
-      sawSignedOut = true;
+    if (status.on_login) {
       if (note) note.textContent = "Waiting for you to finish signing in…";
-    } else if (!sawSignedOut) {
+    } else if (status.on_detour || (status.signed_in && !status.on_app)) {
       if (note) {
-        note.textContent = "This browser still has the old cookies. Sign in again, then click Save session.";
+        note.textContent = "YouTube TV sent this tab away from the app. Opening tv.youtube.com…";
       }
+      await fetch("/api/auth/chrome/open", { method: "POST" });
+    } else if (!status.signed_in) {
+      if (note) note.textContent = "Waiting for you to finish signing in on tv.youtube.com…";
     } else {
       if (note) note.textContent = "Signed in. Saving the session…";
       showToast("Signed in. Saving the session and refreshing the guide…");
@@ -202,7 +197,7 @@ async function watchChromeLogin() {
       hideToast();
       errorEl.textContent = await readError(capture);
     }
-    await new Promise((resolve) => setTimeout(resolve, 15000));
+    await new Promise((resolve) => setTimeout(resolve, 4000));
   }
 }
 

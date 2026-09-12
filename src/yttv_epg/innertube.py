@@ -4,10 +4,11 @@ import asyncio
 import json
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, Optional
 
 import httpx
 
+from yttv_epg.chrome import ChromeError
 from yttv_epg.config import settings
 from yttv_epg.parse import (
     Airing,
@@ -17,12 +18,22 @@ from yttv_epg.parse import (
     keep_hub_tab,
     merge_airings,
     parse_browse,
+    watch_deeplink,
 )
 from yttv_epg.session import innertube_headers
 from yttv_epg.session_store import SavedSession
 
 BROWSE_IDS = ("FEunplugged_epg", "FEunplugged_home", "FEunplugged_main")
+HOME_BROWSE_ID = "FEunplugged_home"
 ESPN_HUB_FALLBACK = "UCakwQ1jKQnYJcUMghvnp-Yw"
+SKIP_CHIP_BROWSES = {
+    "FEunplugged_epg",
+    "FEunplugged_home",
+    "FEunplugged_main",
+    "FEunplugged_library",
+    "FEunplugged_store",
+    "FEunplugged_onboarding",
+}
 
 CLIENTS = (
     {
@@ -60,7 +71,7 @@ class MineError(RuntimeError):
 
 def session_expired_message(text: str | None) -> bool:
     lowered = (text or "").lower()
-    return "session expired" in lowered or "http 401" in lowered or "http 403" in lowered
+    return "session expired" in lowered or "http 401" in lowered
 
 
 def _session_expired(exc: Exception) -> bool:
@@ -75,14 +86,23 @@ class MineResult:
     raw: dict[str, Any]
 
 
+BrowserPost = Callable[[str, dict[str, str], dict[str, Any]], Awaitable[tuple[int, Any]]]
+
+
 class InnerTubeClient:
-    def __init__(self, http: httpx.AsyncClient) -> None:
+    def __init__(self, http: httpx.AsyncClient, browser_post: Optional[BrowserPost] = None) -> None:
         self.http = http
         self.visitor_data = ""
         self._visitor_lock = asyncio.Lock()
         self._visitor_frozen = False
         self._sema: Optional[asyncio.Semaphore] = None
         self._sema_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._browser_post = browser_post
+        self._browser_failed = False
+
+    def set_browser_post(self, browser_post: Optional[BrowserPost]) -> None:
+        self._browser_post = browser_post
+        self._browser_failed = False
 
     def _http_sema(self) -> asyncio.Semaphore:
         loop = asyncio.get_running_loop()
@@ -115,6 +135,7 @@ class InnerTubeClient:
 
     async def mine(self, session: SavedSession, fallback_minutes: int = 180) -> MineResult:
         errors: list[str] = []
+        self._browser_failed = False
         try:
             for client in CLIENTS:
                 result = await self._mine_client(session, client, fallback_minutes, errors)
@@ -158,29 +179,33 @@ class InnerTubeClient:
                 errors.append(str(item))
                 continue
             payloads.extend(item)
-        seen_browses = {browse_id.split(":")[0] for browse_id, _ in payloads}
-        chip_jobs: list[tuple[str, str, Any]] = []
-        for chip in discover_sports_chips(epg):
-            browse_id = str(chip.get("browse_id") or "")
-            if not browse_id or browse_id in seen_browses or browse_id.startswith("UC"):
-                continue
-            seen_browses.add(browse_id)
-            chip_jobs.append((browse_id, str(chip.get("title") or "sports"), chip))
-        chip_results = await asyncio.gather(
-            *[
-                self._browse_all(
-                    session,
-                    client,
-                    browse_id,
-                    max_pages=settings.hub_pages,
-                    params=str(chip.get("params") or "") or None,
-                )
-                for browse_id, _title, chip in chip_jobs
-            ],
-            return_exceptions=True,
-        )
-        if _abort_if_expired(chip_results, errors):
-            return None
+        home: dict[str, Any] = {}
+        try:
+            home = await self._browse_all(
+                session, client, HOME_BROWSE_ID, max_pages=min(2, settings.hub_pages)
+            )
+        except MineError as exc:
+            errors.append(str(exc))
+            if _session_expired(exc):
+                return None
+        chip_jobs = _sports_chip_jobs(epg, home)
+        chip_results: list[Any] = []
+        if chip_jobs:
+            chip_results = await asyncio.gather(
+                *[
+                    self._browse_all(
+                        session,
+                        client,
+                        browse_id,
+                        max_pages=settings.hub_pages,
+                        params=str(chip.get("params") or "") or None,
+                    )
+                    for browse_id, _title, chip in chip_jobs
+                ],
+                return_exceptions=True,
+            )
+            if _abort_if_expired(chip_results, errors):
+                return None
         for (browse_id, title, _chip), extra in zip(chip_jobs, chip_results):
             if isinstance(extra, Exception):
                 errors.append(str(extra))
@@ -402,7 +427,7 @@ class InnerTubeClient:
                 airing,
                 video_id=watch,
                 title=airing.title or found.title,
-                deeplink=f"https://tv.youtube.com/watch/{watch}",
+                deeplink=watch_deeplink(watch),
                 sport=airing.sport or found.sport,
                 channel=airing.channel or found.channel,
             )
@@ -437,16 +462,11 @@ class InnerTubeClient:
         headers = innertube_headers(session.cookies, client)
         if self.visitor_data:
             headers["X-Goog-Visitor-Id"] = self.visitor_data
-        async with self._http_sema():
-            response = await self.http.post(url, json=payload, headers=headers, timeout=45)
-        if response.status_code in {401, 403}:
+        status, data = await self._post_browse(url, headers, payload)
+        if status == 401:
             raise MineError("YTTV session expired. Sign in again on tv.youtube.com.")
-        if response.status_code >= 400:
-            raise MineError(_http_error(client["name"], url, response))
-        try:
-            data = response.json()
-        except json.JSONDecodeError as exc:
-            raise MineError(f"{client['name']} returned non-JSON") from exc
+        if status >= 400:
+            raise MineError(_browse_http_error(client["name"], url, status, data))
         if not isinstance(data, dict):
             raise MineError(f"{client['name']} returned an unexpected payload")
         visitor = (
@@ -462,6 +482,51 @@ class InnerTubeClient:
             raise MineError(str(message))
         return data
 
+    async def _post_browse(
+        self,
+        url: str,
+        headers: dict[str, str],
+        payload: dict[str, Any],
+    ) -> tuple[int, Any]:
+        if self._browser_post and not self._browser_failed:
+            try:
+                async with self._http_sema():
+                    status, data = await self._browser_post(url, headers, payload)
+            except ChromeError:
+                self._browser_failed = True
+            else:
+                if status != 401:
+                    return status, data
+        async with self._http_sema():
+            response = await self.http.post(url, json=payload, headers=headers, timeout=45)
+        try:
+            data = response.json()
+        except json.JSONDecodeError:
+            data = None
+        return response.status_code, data
+
+
+def _sports_chip_jobs(*payloads: dict[str, Any]) -> list[tuple[str, str, dict[str, str]]]:
+    jobs: list[tuple[str, str, dict[str, str]]] = []
+    seen: set[tuple[str, str]] = set()
+    for payload in payloads:
+        if not payload:
+            continue
+        for chip in discover_sports_chips(payload):
+            browse_id = str(chip.get("browse_id") or "")
+            params = str(chip.get("params") or "")
+            title = str(chip.get("title") or "sports")
+            if not browse_id or browse_id.startswith("UC"):
+                continue
+            if browse_id in SKIP_CHIP_BROWSES:
+                continue
+            key = (browse_id, params)
+            if key in seen:
+                continue
+            seen.add(key)
+            jobs.append((browse_id, title, chip))
+    return jobs
+
 
 def _abort_if_expired(results: list[Any], errors: list[str]) -> bool:
     for item in results:
@@ -471,17 +536,14 @@ def _abort_if_expired(results: list[Any], errors: list[str]) -> bool:
     return False
 
 
-def _http_error(name: str, url: str, response: httpx.Response) -> str:
+def _browse_http_error(name: str, url: str, status: int, data: Any) -> str:
     detail = ""
-    try:
-        payload = response.json()
-        error = payload.get("error") if isinstance(payload, dict) else None
+    if isinstance(data, dict):
+        error = data.get("error")
         if isinstance(error, dict):
             detail = str(error.get("message") or error.get("status") or "")
-    except Exception:
-        detail = ""
     suffix = f": {detail}" if detail else ""
-    return f"{name} {url} returned HTTP {response.status_code}{suffix}"
+    return f"{name} {url} returned HTTP {status}{suffix}"
 
 
 def _continuation(payload: dict[str, Any]) -> Optional[str]:
@@ -506,7 +568,17 @@ def _continuation(payload: dict[str, Any]) -> Optional[str]:
             if isinstance(command, dict) and isinstance(command.get("token"), str):
                 found.append(str(command["token"]))
                 return
-        for value in node.values():
+        for key, value in node.items():
+            if key in {
+                "unpluggedVideoRenderer",
+                "unpluggedGameCardRenderer",
+                "epgAiringRenderer",
+                "thumbnail",
+                "menu",
+                "onTap",
+                "trackingParams",
+            }:
+                continue
             walk(value)
 
     walk(payload)

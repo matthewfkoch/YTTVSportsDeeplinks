@@ -8,6 +8,9 @@ CDP_PORT="${CDP_PORT:-9222}"
 VNC_PORT="${VNC_PORT:-5900}"
 NOVNC_PORT="${NOVNC_PORT:-7900}"
 NOVNC_WEB="${NOVNC_WEB:-/usr/share/novnc}"
+STOP_FILE="${STOP_FILE:-/tmp/yttv-stop-chrome}"
+CHROME_PID_FILE="${CHROME_PID_FILE:-/tmp/yttv-chromium.pid}"
+rm -f "$STOP_FILE" "$CHROME_PID_FILE"
 
 mkdir -p "${YTTV_EPG_DATA_DIR:-/data}" "$CHROME_PROFILE"
 
@@ -70,12 +73,12 @@ start_desktop() {
   (
     delay=30
     while true; do
+      [ -f "$STOP_FILE" ] && break
       prune_chrome_profile
       rm -f "$CHROME_PROFILE/SingletonLock" "$CHROME_PROFILE/SingletonSocket" "$CHROME_PROFILE/SingletonCookie"
       started=$(date +%s)
       "$CHROME_BIN" \
         --no-sandbox \
-        --test-type \
         --disable-gpu \
         --disable-dev-shm-usage \
         --disable-software-rasterizer \
@@ -86,16 +89,18 @@ start_desktop() {
         --disable-infobars \
         --disable-sync \
         --disable-translate \
-        --disable-background-networking \
         --disable-client-side-phishing-detection \
         --disable-component-update \
         --disable-breakpad \
         --disable-crash-reporter \
         --disable-metrics \
-        --disable-features=TranslateUI,PersistentHistograms \
+        --disable-features=TranslateUI,PersistentHistograms,DeviceBoundSessionCredentials,BoundSessionCredentials \
         --disable-hang-monitor \
         --disable-popup-blocking \
         --disable-prompt-on-repost \
+        --disable-backgrounding-occluded-windows \
+        --disable-renderer-backgrounding \
+        --memory-pressure-off \
         --disk-cache-size=268435456 \
         --mute-audio \
         --password-store=basic \
@@ -108,7 +113,12 @@ start_desktop() {
         --window-size=1280,800 \
         --window-position=0,0 \
         --start-maximized \
-        https://tv.youtube.com >/tmp/chromium.log 2>&1 || true
+        https://tv.youtube.com >/tmp/chromium.log 2>&1 &
+      chrome_pid=$!
+      echo "$chrome_pid" > "$CHROME_PID_FILE"
+      wait "$chrome_pid" || true
+      rm -f "$CHROME_PID_FILE"
+      [ -f "$STOP_FILE" ] && break
       ran=$(($(date +%s) - started))
       if [ "$ran" -ge 120 ]; then
         delay=30
@@ -124,6 +134,28 @@ start_desktop() {
   ) &
 }
 
+shutdown() {
+  touch "$STOP_FILE"
+  if [ -f "$CHROME_PID_FILE" ]; then
+    chrome_pid=$(cat "$CHROME_PID_FILE")
+    kill -TERM "$chrome_pid" >/dev/null 2>&1 || true
+    i=0
+    while [ "$i" -lt 10 ]; do
+      kill -0 "$chrome_pid" >/dev/null 2>&1 || break
+      i=$((i + 1))
+      sleep 0.5
+    done
+  fi
+  if [ -n "${APP_PID:-}" ]; then
+    kill -TERM "$APP_PID" >/dev/null 2>&1 || true
+    wait "$APP_PID" 2>/dev/null || true
+  fi
+  exit 0
+}
+
+trap shutdown TERM INT
 start_desktop
 
-exec uvicorn yttv_epg.app:app --host 0.0.0.0 --port "${YTTV_EPG_PORT:-8095}"
+uvicorn yttv_epg.app:app --host 0.0.0.0 --port "${YTTV_EPG_PORT:-8095}" &
+APP_PID=$!
+wait "$APP_PID"

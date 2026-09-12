@@ -271,12 +271,57 @@ def apply_espn_sports(
     indexed = _index_listings(listings)
     labeled: list[Airing] = []
     for item in airings:
+        listing = _listing_for_matchup(item, indexed)
         sport = espn_sport_for(item, indexed)
+        updates: dict[str, Any] = {}
         if sport and sport != item.sport:
-            labeled.append(replace(item, sport=sport))
+            updates["sport"] = sport
+        if listing and listing.start and _placeholder_kickoff(item.start):
+            if _same_local_day(item.start, listing.start):
+                updates["start"] = listing.start
+                updates["end"] = listing.start + (item.end - item.start)
+        if updates:
+            labeled.append(replace(item, **updates))
         else:
             labeled.append(item)
     return labeled
+
+
+def _listing_for_matchup(airing: Airing, indexed: EspnIndex) -> Optional[EspnListing]:
+    teams = matchup_teams(airing.title)
+    if not teams:
+        return None
+    candidates = list(indexed.by_teams.get(teams) or [])
+    if not candidates:
+        candidates = [
+            item
+            for listing_teams, rows in indexed.by_teams.items()
+            for item in rows
+            if _teams_compatible(teams, listing_teams)
+        ]
+    timed = [item for item in candidates if item.start and _same_local_day(airing.start, item.start)]
+    pool = timed or [item for item in candidates if item.start]
+    if not pool:
+        return None
+    return min(pool, key=lambda item: _start_delta(airing.start, item.start))
+
+
+def _teams_compatible(left: frozenset[str], right: Optional[frozenset[str]]) -> bool:
+    if not right or len(left) != 2 or len(right) != 2:
+        return False
+    if left == right:
+        return True
+    return all(any(a == b or a in b or b in a for b in right) for a in left)
+
+
+def _same_local_day(left: datetime, right: datetime) -> bool:
+    zone = ZoneInfo("America/New_York")
+    return left.astimezone(zone).date() == right.astimezone(zone).date()
+
+
+def _placeholder_kickoff(start: datetime) -> bool:
+    local = start.astimezone(ZoneInfo("America/New_York"))
+    return local.hour == 12 and local.minute == 0
 
 
 def espn_sport_for(airing: Airing, indexed: EspnIndex) -> Optional[str]:

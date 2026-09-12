@@ -18,6 +18,8 @@ from yttv_epg.sports import (
 def test_movie_at_is_not_a_matchup():
     assert not is_matchup("Night at the Museum")
     assert not is_matchup("World at War")
+    assert not is_matchup("FOX 2 Newsedge at 11pm")
+    assert not is_matchup("News at 10")
     assert is_matchup("East Carolina at Alabama")
     assert is_matchup("Brentford vs. Sunderland")
 
@@ -56,6 +58,44 @@ def test_program_titles_are_not_channels_or_events():
     visible = visible_events(rows, require_watch_link=True)
     assert [item.station for item in visible] == ["ESPN"]
     assert {item["name"] for item in channel_counts(visible)} == {"ESPN"}
+
+
+def test_linear_studio_and_news_are_not_sports_events():
+    from yttv_epg.sports import is_sports_chip_title
+
+    assert not is_sports_event("FOX 2", "FOX 2 Newsedge at 11pm")
+    assert not is_sports_event("NBA TV", "NBA Playback")
+    assert not is_sports_event("NBA TV", "The Association")
+    assert not is_sports_event("ESPNU", "The Difference: LSU Football")
+    assert not is_sports_event("FS1", "NFL Films Presents")
+    assert not is_sports_event("NFL Network", "NFL Fantasy Live")
+    assert not is_sports_event("BTN", "B1G Volleyball in 60")
+    assert not is_sports_event("ESPN+", "Contacto deportivo")
+    assert not is_sports_event("ESPN+", "SEC Halftime Band Performances at Texas A&M")
+    assert not is_sports_event("SEC+", "SEC Halftime Band Performances at Georgia")
+    assert is_sports_event("Golf Channel", "Folds of Honor Collegiate, Final Round")
+    assert is_sports_event("Golf Channel", "Day 1")
+    assert is_sports_event("Tennis Channel", "ATP Tour")
+    assert is_sports_event("ESPN Unlimited", "Court 4")
+    assert is_sports_event("ESPN Unlimited", "Louis Armstrong Stadium")
+    assert is_sports_event("ESPN Unlimited", "Grandstand")
+    assert is_sports_event("ESPN Unlimited", "Court TBC")
+    assert is_sports_event("ESPN Unlimited", "Stadium 17")
+    assert is_sports_event("ESPN", "Texas A&M at Stanford")
+    assert is_sports_event("NFL ST - FOX", "Miami Dolphins at Las Vegas Raiders")
+    assert is_sports_event("Local 4", "New England Patriots at Seattle Seahawks")
+    assert is_sports_event("HBCU GO", "Kentucky State vs. Tuskegee")
+    assert is_sports_event("T2", "2026 Men's & Women's Quarterfinals")
+    assert is_sports_chip_title("Sports")
+    assert is_sports_chip_title("Football")
+    assert is_sports_chip_title("Tennis")
+    assert is_sports_chip_title("NFL")
+    assert is_sports_chip_title("College Football")
+    assert not is_sports_chip_title("Sports news")
+    assert not is_sports_chip_title("News")
+    assert not is_sports_chip_title("Movies")
+    assert not is_sports_chip_title("CNN")
+    assert not is_sports_chip_title("4K")
 
 
 def test_extras_and_volleyball_are_sports_events():
@@ -120,6 +160,10 @@ def test_extras_and_volleyball_are_sports_events():
     assert infer_sport("Disc Golf Pro Tour", "ESPNews") == "Disc Golf"
     assert infer_sport("Fairleigh Dickinson vs. Lafayette", "ESPN+") == "Other"
     assert infer_sport("Court 8", "ESPN Unlimited") == "Tennis"
+    assert infer_sport("Louis Armstrong Stadium", "ESPN Unlimited") == "Tennis"
+    assert infer_sport("Grandstand", "ESPN Unlimited") == "Tennis"
+    assert infer_sport("Court TBC", "ESPN Unlimited") == "Tennis"
+    assert infer_sport("Stadium 17", "ESPN Unlimited") == "Tennis"
     assert infer_sport("United States vs. Czechia", "truTV") == "Hockey"
     assert infer_sport("Race Day Live: Columbus", "NBCSN Extra") == "Horse Racing"
     assert not is_sports_event("Telemundo", "El señor de los cielos: Extras")
@@ -217,16 +261,19 @@ def test_emma_is_not_mma_and_hallmark_is_not_sports():
 
 def test_visible_events_drops_entertainment_stations():
     class Row:
-        def __init__(self, station: str) -> None:
+        def __init__(self, station: str, title: str) -> None:
             self.sport = "Combat"
             self.station = station
-            self.title = "Emma Fielding Mysteries"
+            self.title = title
             self.channel = station
 
         def watch_id(self) -> str:
             return "watchidxxxx"
 
-    rows = [Row("Hallmark Mystery"), Row("ESPN")]
+    rows = [
+        Row("Hallmark Mystery", "Emma Fielding Mysteries"),
+        Row("ESPN", "Celtics vs. Lakers"),
+    ]
     assert [item.station for item in visible_events(rows, require_watch_link=True)] == ["ESPN"]
 
 
@@ -348,3 +395,12 @@ def test_visible_events_can_require_watch_link():
     assert [item.watch_id() for item in visible_events(rows)] == ["YGUvoKVT5qk", ""]
     linked = visible_events(rows, require_watch_link=True)
     assert [item.watch_id() for item in linked] == ["YGUvoKVT5qk"]
+
+
+def test_linear_matchup_without_watch_is_upcoming_guide_row():
+    from yttv_epg.sports import is_upcoming_linear_matchup
+
+    assert is_upcoming_linear_matchup("ESPN2", "Penn State at Temple")
+    assert is_upcoming_linear_matchup("ABC 7", "Arizona State at Texas A&M")
+    assert not is_upcoming_linear_matchup("ESPN+", "Dickinson College vs. Davidson")
+    assert not is_upcoming_linear_matchup("BTN Overflow 1", "Utah State at Washington")
