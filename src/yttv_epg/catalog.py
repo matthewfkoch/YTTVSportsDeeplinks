@@ -9,7 +9,7 @@ from typing import Any, Optional
 
 from yttv_epg.branding import for_ui
 from yttv_epg.lanes import LaneAssignment
-from yttv_epg.parse import Airing, merge_airings
+from yttv_epg.parse import Airing, keep_artwork, merge_airings
 from yttv_epg.sports import clean_station, infer_channel, resolve_sport, visible_events
 
 
@@ -20,6 +20,8 @@ def _better_row(candidate: Airing, current: Airing) -> bool:
         return len(candidate.title) > len(current.title)
     if bool(candidate.station) != bool(current.station):
         return bool(candidate.station)
+    if bool(candidate.artwork) != bool(current.artwork):
+        return bool(candidate.artwork)
     return len(candidate.station) > len(current.station)
 
 
@@ -72,6 +74,8 @@ class Catalog:
             self._conn.execute("ALTER TABLE events ADD COLUMN entity_id TEXT NOT NULL DEFAULT ''")
         if "channel" not in cols:
             self._conn.execute("ALTER TABLE events ADD COLUMN channel TEXT NOT NULL DEFAULT ''")
+        if "artwork" not in cols:
+            self._conn.execute("ALTER TABLE events ADD COLUMN artwork TEXT NOT NULL DEFAULT ''")
         self._conn.commit()
 
     def replace(
@@ -120,14 +124,18 @@ class Catalog:
         for item in airings:
             key = (item.video_id, int(item.start.timestamp()))
             prev = unique.get(key)
-            if prev is None or _better_row(item, prev):
+            if prev is None:
                 unique[key] = item
+            elif _better_row(item, prev):
+                unique[key] = keep_artwork(item, prev)
+            else:
+                unique[key] = keep_artwork(prev, item)
         rows = list(unique.values())
         try:
             cur.executemany(
                 """
-                INSERT INTO events(video_id, title, station, kind, start_ts, end_ts, deeplink, live, source, sport, entity_id, channel)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO events(video_id, title, station, kind, start_ts, end_ts, deeplink, live, source, sport, entity_id, channel, artwork)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(video_id, start_ts) DO UPDATE SET
                     title = excluded.title,
                     station = excluded.station,
@@ -138,7 +146,8 @@ class Catalog:
                     source = excluded.source,
                     sport = excluded.sport,
                     entity_id = excluded.entity_id,
-                    channel = excluded.channel
+                    channel = excluded.channel,
+                    artwork = excluded.artwork
                 """,
                 [
                     self._row_values(item)
@@ -210,8 +219,8 @@ class Catalog:
                 )
                 cur.execute(
                     """
-                    INSERT INTO events(video_id, title, station, kind, start_ts, end_ts, deeplink, live, source, sport, entity_id, channel)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO events(video_id, title, station, kind, start_ts, end_ts, deeplink, live, source, sport, entity_id, channel, artwork)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(video_id, start_ts) DO UPDATE SET
                         title = excluded.title,
                         station = excluded.station,
@@ -222,7 +231,8 @@ class Catalog:
                         source = excluded.source,
                         sport = excluded.sport,
                         entity_id = excluded.entity_id,
-                        channel = excluded.channel
+                        channel = excluded.channel,
+                        artwork = excluded.artwork
                     """,
                     self._row_values(resolved),
                 )
@@ -378,6 +388,7 @@ class Catalog:
             item.sport,
             item.entity_id,
             item.channel or infer_channel(item.station, item.title),
+            item.artwork,
         )
 
     def _row_to_airing(self, row: sqlite3.Row) -> Airing:
@@ -399,4 +410,5 @@ class Catalog:
             sport=sport,
             entity_id=str(row["entity_id"]) if "entity_id" in keys else "",
             channel=infer_channel(station, title),
+            artwork=str(row["artwork"]) if "artwork" in keys else "",
         )

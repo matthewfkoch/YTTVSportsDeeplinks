@@ -70,6 +70,15 @@ def test_replace_persists_channel_family(tmp_path: Path):
     assert catalog.events()[0].channel == "ESPN+"
 
 
+def test_replace_persists_artwork(tmp_path: Path):
+    start = datetime(2026, 9, 5, 16, 0, tzinfo=timezone.utc)
+    game = _airing("UConn vs Maryland", start)
+    game.artwork = "https://yt3.ggpht.com/UConnMarylandArt=w960-h540-p-ns-nd"
+    catalog = Catalog(tmp_path / "catalog.sqlite")
+    catalog.replace([game], pack_lanes([game], 2))
+    assert catalog.events()[0].artwork == game.artwork
+
+
 def test_stored_volleyball_survives_school_name_football_guess(tmp_path: Path):
     start = datetime(2026, 9, 5, 16, 0, tzinfo=timezone.utc)
     game = Airing(

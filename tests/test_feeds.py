@@ -17,6 +17,7 @@ def _airing() -> Airing:
         start=start,
         end=start + timedelta(hours=3),
         deeplink="https://tv.youtube.com/watch/YGUvoKVT5qk",
+        artwork="https://yt3.ggpht.com/UConnMarylandArt=w960-h540-p-ns-nd",
     )
 
 
@@ -28,6 +29,10 @@ def test_xmltv_contains_event_and_deeplink():
     assert "https://tv.youtube.com/watch/YGUvoKVT5qk" in body
     assert 'channel="yttv-sports-1"' in body
     assert '<icon src="http://192.168.1.10:8095/static/logo.png" />' in body
+    assert (
+        '<icon src="https://yt3.ggpht.com/UConnMarylandArt=w720-h540-p-ns-nd" '
+        'width="720" height="540" />'
+    ) in body
 
 
 def test_xmltv_omits_events_without_watch_link():

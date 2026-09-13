@@ -5,7 +5,12 @@ from xml.sax.saxutils import escape
 
 from yttv_epg.branding import LOGO_PATH, PRODUCT_NAME, SOURCE_NAME
 from yttv_epg.lanes import LaneAssignment
-from yttv_epg.parse import Airing
+from yttv_epg.parse import (
+    Airing,
+    GUIDE_ARTWORK_HEIGHT,
+    GUIDE_ARTWORK_WIDTH,
+    sized_artwork_url,
+)
 
 
 def lane_id(lane: int) -> str:
@@ -48,6 +53,14 @@ def xmltv(assignments: list[LaneAssignment], lane_count: int, *, base_url: str =
             lines.append(f"    <category>{escape(row.airing.channel)}</category>")
         if row.airing.deeplink:
             lines.append(f"    <url>{escape(row.airing.deeplink)}</url>")
+        if row.airing.artwork:
+            icon = sized_artwork_url(
+                row.airing.artwork, GUIDE_ARTWORK_WIDTH, GUIDE_ARTWORK_HEIGHT
+            )
+            lines.append(
+                f'    <icon src="{escape(icon)}" width="{GUIDE_ARTWORK_WIDTH}" '
+                f'height="{GUIDE_ARTWORK_HEIGHT}" />'
+            )
         lines.append("  </programme>")
     lines.append("</tv>")
     return "\n".join(lines) + "\n"
@@ -123,7 +136,7 @@ def whatson_payload(lane: int, airing: Airing | None) -> dict:
             "station": airing.station,
             "sport": airing.sport,
         }
-    return {
+    payload = {
         "ok": True,
         "lane": lane,
         "deeplink_url": airing.deeplink,
@@ -136,6 +149,9 @@ def whatson_payload(lane: int, airing: Airing | None) -> dict:
         "start": airing.start.astimezone(timezone.utc).isoformat(),
         "end": airing.end.astimezone(timezone.utc).isoformat(),
     }
+    if airing.artwork:
+        payload["artwork"] = airing.artwork
+    return payload
 
 
 def _xmltv_time(value: datetime) -> str:

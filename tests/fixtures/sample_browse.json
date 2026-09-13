@@ -46,6 +46,15 @@
                       "startTime": "1730000000",
                       "endTime": "1730007200",
                       "title": { "simpleText": "UConn vs Maryland" },
+                      "thumbnail": {
+                        "thumbnails": [
+                          {
+                            "url": "//yt3.ggpht.com/UConnMarylandArt=ns-nd",
+                            "width": 3840,
+                            "height": 2160
+                          }
+                        ]
+                      },
                       "navigationEndpoint": {
                         "watchEndpoint": { "videoId": "YGUvoKVT5qk" }
                       }

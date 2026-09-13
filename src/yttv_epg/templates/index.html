@@ -7,7 +7,7 @@
   <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
   <link rel="icon" type="image/png" href="/static/logo.png">
   <link rel="apple-touch-icon" href="/static/logo.png">
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/app.css?v=art-1">
 </head>
 <body
   data-signed-in="{{ 'true' if signed_in else 'false' }}"
@@ -163,7 +163,7 @@
             >
               <td>{% if event.live %}<span class="live">LIVE</span> {% endif %}{{ event.clock }}</td>
               <td>{{ event.sport or "—" }}</td>
-              <td>{{ event.title }}</td>
+              <td class="event-title">{% if event.artwork %}<img class="event-art" src="{{ event.artwork }}" alt="" width="96" height="54" loading="lazy">{% endif %}{{ event.title }}</td>
               <td>{{ event.station or event.channel or "—" }}{% if event.channel and event.station and event.channel != event.station %}<div class="muted">{{ event.channel }}</div>{% endif %}</td>
               <td>
                 {% if event.deeplink %}

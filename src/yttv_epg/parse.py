@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Optional
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 from zoneinfo import ZoneInfo
 
 from yttv_epg.sports import (
@@ -62,6 +62,13 @@ LINEAR_STATIONS = {
 
 MIN_UNIX_TS = 946684800  # 2000-01-01
 MAX_UNIX_TS = 4102444800  # 2100-01-01
+MIN_ARTWORK_WIDTH = 640
+MIN_FALLBACK_ARTWORK_WIDTH = 200
+ARTWORK_WIDTH = 960
+ARTWORK_HEIGHT = 540
+GUIDE_ARTWORK_WIDTH = 720
+GUIDE_ARTWORK_HEIGHT = 540
+POSTER_ARTWORK_SCORE = 1_000_000
 
 
 @dataclass
@@ -78,6 +85,7 @@ class Airing:
     sport: str = ""
     entity_id: str = ""
     channel: str = ""
+    artwork: str = ""
 
     def watch_id(self) -> str:
         return self.video_id if _ok_video_id(self.video_id) else ""
@@ -99,6 +107,7 @@ class Airing:
             "deeplink": self.deeplink,
             "live": self.live,
             "source": self.source,
+            "artwork": self.artwork,
         }
 
 
@@ -118,8 +127,12 @@ def merge_airings(airings: Iterable[Airing]) -> list[Airing]:
     for airing in airings:
         key = _airing_key(airing)
         prev = found.get(key)
-        if prev is None or _better_airing(airing, prev):
+        if prev is None:
             found[key] = airing
+        elif _better_airing(airing, prev):
+            found[key] = keep_artwork(airing, prev)
+        else:
+            found[key] = keep_artwork(prev, airing)
     return _prefer_linear_simulcasts(list(found.values()))
 
 
@@ -147,7 +160,17 @@ def _prefer_linear_simulcasts(airings: list[Airing]) -> list[Airing]:
             if any(_same_matchup_slot(item, prev) for prev in group_kept):
                 continue
             group_kept.append(item)
-        kept.extend(group_kept)
+        filled: list[Airing] = []
+        for kept_item in group_kept:
+            if kept_item.artwork:
+                filled.append(kept_item)
+                continue
+            art = next(
+                (item.artwork for item in group if item.artwork and _same_matchup_slot(kept_item, item)),
+                "",
+            )
+            filled.append(replace(kept_item, artwork=art) if art else kept_item)
+        kept.extend(filled)
     return sorted(kept, key=lambda item: (item.start, item.title, item.video_id))
 
 
@@ -191,7 +214,15 @@ def _better_airing(candidate: Airing, current: Airing) -> bool:
         return len(candidate.title) > len(current.title)
     if bool(candidate.station) != bool(current.station):
         return bool(candidate.station)
+    if bool(candidate.artwork) != bool(current.artwork):
+        return bool(candidate.artwork)
     return len(candidate.station) > len(current.station)
+
+
+def keep_artwork(winner: Airing, other: Airing) -> Airing:
+    if winner.artwork or not other.artwork:
+        return winner
+    return replace(winner, artwork=other.artwork)
 
 
 @dataclass
@@ -205,6 +236,7 @@ class _WalkCtx:
     sport: str = ""
     tab: str = ""
     entity_id: str = ""
+    artwork: str = ""
 
     def child(self, **kwargs: Any) -> _WalkCtx:
         data = self.__dict__.copy()
@@ -311,6 +343,8 @@ def _context_from_node(node: dict[str, Any], ctx: _WalkCtx) -> _WalkCtx:
         inferred = infer_sport(title, station)
         if inferred != "Other":
             sport = inferred
+    score, url = _best_artwork(node)
+    artwork = url if url and (score >= POSTER_ARTWORK_SCORE or not ctx.artwork) else ctx.artwork
     return ctx.child(
         title=title,
         station=station,
@@ -318,6 +352,7 @@ def _context_from_node(node: dict[str, Any], ctx: _WalkCtx) -> _WalkCtx:
         end=end,
         live=live,
         sport=sport,
+        artwork=artwork,
     )
 
 
@@ -355,6 +390,7 @@ def _to_airing(
         sport=ctx.sport or infer_sport(title, station),
         entity_id=entity_id,
         channel=infer_channel(station, title),
+        artwork=ctx.artwork,
     )
 
 
@@ -411,6 +447,7 @@ def _airing_from_game_card(
             sport=sport or "",
             tab=ctx.tab,
             entity_id=entity_id,
+            artwork=_artwork_from_node(card),
         ),
         now,
         fallback_minutes,
@@ -846,6 +883,82 @@ def _video_id_from_node(node: dict[str, Any]) -> Optional[str]:
 
 def _ok_video_id(value: Any) -> bool:
     return isinstance(value, str) and bool(VIDEO_ID_RE.match(value))
+
+
+def _artwork_from_node(node: dict[str, Any]) -> str:
+    return _best_artwork(node)[1]
+
+
+def _best_artwork(node: dict[str, Any]) -> tuple[int, str]:
+    best: tuple[int, str] = (0, "")
+    for item in _thumbnail_entries(node):
+        url = _normalize_artwork_url(item.get("url"))
+        if not url:
+            continue
+        score = _artwork_score(_positive_int(item.get("width")), _positive_int(item.get("height")))
+        if score > best[0]:
+            best = (score, url)
+    return best
+
+
+def _artwork_score(width: int, height: int) -> int:
+    if width >= MIN_ARTWORK_WIDTH and (not height or width >= int(height * 1.2)):
+        return POSTER_ARTWORK_SCORE + width
+    if width >= MIN_FALLBACK_ARTWORK_WIDTH:
+        return width
+    return 0
+
+
+def _thumbnail_entries(node: dict[str, Any]) -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = []
+    for key in ("thumbnail", "primaryThumbnail"):
+        value = node.get(key)
+        if isinstance(value, dict):
+            thumbs = value.get("thumbnails")
+            if isinstance(thumbs, list):
+                found.extend(item for item in thumbs if isinstance(item, dict))
+            elif isinstance(value.get("url"), str):
+                found.append(value)
+        elif isinstance(value, list):
+            found.extend(item for item in value if isinstance(item, dict))
+    return found
+
+
+def _normalize_artwork_url(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    text = value.strip()
+    if text.startswith("//"):
+        text = "https:" + text
+    if not text.startswith("https://"):
+        return ""
+    host = urlparse(text).netloc.lower()
+    if "ggpht.com" not in host and "googleusercontent.com" not in host:
+        return ""
+    return sized_artwork_url(text, ARTWORK_WIDTH, ARTWORK_HEIGHT)
+
+
+def sized_artwork_url(url: str, width: int, height: int) -> str:
+    text = (url or "").strip()
+    if text.startswith("//"):
+        text = "https:" + text
+    if not text.startswith("https://"):
+        return ""
+    host = urlparse(text).netloc.lower()
+    if "ggpht.com" not in host and "googleusercontent.com" not in host:
+        return text
+    base, sep, _params = text.partition("=")
+    if not sep:
+        base = text
+    return f"{base}=w{width}-h{height}-p-ns-nd"
+
+
+def _positive_int(value: Any) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return number if number > 0 else 0
 
 
 def _title_from_node(node: dict[str, Any]) -> str:

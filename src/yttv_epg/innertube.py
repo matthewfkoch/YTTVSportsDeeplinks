@@ -430,6 +430,7 @@ class InnerTubeClient:
                 deeplink=watch_deeplink(watch),
                 sport=airing.sport or found.sport,
                 channel=airing.channel or found.channel,
+                artwork=airing.artwork or found.artwork,
             )
         return airing
 

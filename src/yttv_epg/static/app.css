@@ -21,7 +21,7 @@ body {
 }
 
 main {
-  max-width: 960px;
+  max-width: 1080px;
   margin: 0 auto;
   padding: 2.5rem 1.25rem 4rem;
 }
@@ -131,6 +131,19 @@ code { background: #10141c; padding: 0.1rem 0.35rem; border-radius: 6px; }
   font-size: 1.05rem;
 }
 .day-group table { margin-bottom: 0.25rem; }
+.event-title {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+.event-art {
+  width: 96px;
+  height: 54px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #10141c;
+  flex: 0 0 auto;
+}
 .live {
   display: inline-block;
   background: #b42318;

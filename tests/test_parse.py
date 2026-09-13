@@ -26,6 +26,7 @@ def test_parse_linear_and_event_airings():
     assert event.title == "UConn vs Maryland"
     assert event.channel == "ESPN+"
     assert event.deeplink.endswith("YGUvoKVT5qk")
+    assert event.artwork == "https://yt3.ggpht.com/UConnMarylandArt=w960-h540-p-ns-nd"
 
     tennis = by_id["abcdefghijk"]
     assert tennis.kind == "event"
@@ -724,3 +725,112 @@ def test_game_card_tomorrow_network_becomes_event():
     assert event.title == "Florida A&M Rattlers at Miami Hurricanes"
     assert event.station == "ACC Network"
     assert event.start.astimezone(timezone.utc).date().isoformat() == "2026-09-11"
+
+
+def test_widescreen_thumbnail_becomes_artwork():
+    payload = {
+        "epgAiringRenderer": {
+            "title": {"simpleText": "Alabama at Kentucky"},
+            "station": {
+                "epgStationRenderer": {
+                    "icon": {"accessibility": {"accessibilityData": {"label": "SEC Network"}}}
+                }
+            },
+            "navigationEndpoint": {"watchEndpoint": {"videoId": "alabamakent"}},
+            "thumbnail": {
+                "thumbnails": [
+                    {"url": "//yt3.ggpht.com/tinyNetworkIcon=ns-nd", "width": 60, "height": 60},
+                    {"url": "//yt3.ggpht.com/AlabamaKentuckyArt=ns-nd", "width": 3840, "height": 2160},
+                ]
+            },
+        }
+    }
+    airings = parse_browse(payload, fallback_minutes=60)
+    assert airings[0].artwork == "https://yt3.ggpht.com/AlabamaKentuckyArt=w960-h540-p-ns-nd"
+
+
+def test_square_network_logo_is_used_when_no_poster():
+    payload = {
+        "epgAiringRenderer": {
+            "title": {"simpleText": "Alabama at Kentucky"},
+            "navigationEndpoint": {"watchEndpoint": {"videoId": "nbcpeacock1"}},
+            "thumbnail": {
+                "thumbnails": [
+                    {"url": "https://yt3.ggpht.com/NBCPeacockLogo=ns-nd", "width": 400, "height": 400}
+                ]
+            },
+        }
+    }
+    airings = parse_browse(payload, fallback_minutes=60)
+    assert airings[0].artwork == "https://yt3.ggpht.com/NBCPeacockLogo=w960-h540-p-ns-nd"
+
+
+def test_tiny_chip_icon_is_not_event_art():
+    payload = {
+        "epgAiringRenderer": {
+            "title": {"simpleText": "Alabama at Kentucky"},
+            "navigationEndpoint": {"watchEndpoint": {"videoId": "tinyiconxx1"}},
+            "thumbnail": {
+                "thumbnails": [
+                    {"url": "//yt3.ggpht.com/tinyNetworkIcon=ns-nd", "width": 60, "height": 60}
+                ]
+            },
+        }
+    }
+    airings = parse_browse(payload, fallback_minutes=60)
+    assert airings[0].artwork == ""
+
+
+def test_nested_station_logo_does_not_replace_poster():
+    payload = {
+        "epgAiringRenderer": {
+            "title": {"simpleText": "Alabama at Kentucky"},
+            "navigationEndpoint": {"watchEndpoint": {"videoId": "alabamakent"}},
+            "thumbnail": {
+                "thumbnails": [
+                    {"url": "//yt3.ggpht.com/AlabamaKentuckyArt=ns-nd", "width": 3840, "height": 2160}
+                ]
+            },
+            "station": {
+                "epgStationRenderer": {
+                    "thumbnail": {
+                        "thumbnails": [
+                            {"url": "https://yt3.ggpht.com/NBCPeacockLogo=ns-nd", "width": 400, "height": 400}
+                        ]
+                    }
+                }
+            },
+        }
+    }
+    airings = parse_browse(payload, fallback_minutes=60)
+    assert airings[0].artwork == "https://yt3.ggpht.com/AlabamaKentuckyArt=w960-h540-p-ns-nd"
+
+
+def test_merge_keeps_artwork_when_longer_title_wins():
+    from datetime import timedelta
+
+    from yttv_epg.parse import Airing, merge_airings
+
+    start = datetime(2026, 9, 12, 16, 0, tzinfo=timezone.utc)
+    poster = Airing(
+        video_id="watchidxxxx",
+        title="Game",
+        station="ESPN",
+        kind="event",
+        start=start,
+        end=start + timedelta(hours=3),
+        deeplink="https://tv.youtube.com/watch/watchidxxxx",
+        artwork="https://yt3.ggpht.com/MatchupPoster=w960-h540-p-ns-nd",
+    )
+    named = Airing(
+        video_id="watchidxxxx",
+        title="Alabama at Kentucky",
+        station="ESPN",
+        kind="event",
+        start=start,
+        end=start + timedelta(hours=3),
+        deeplink="https://tv.youtube.com/watch/watchidxxxx",
+    )
+    merged = merge_airings([poster, named])
+    assert merged[0].title == "Alabama at Kentucky"
+    assert merged[0].artwork == poster.artwork
