@@ -140,9 +140,15 @@ code { background: #10141c; padding: 0.1rem 0.35rem; border-radius: 6px; }
   width: 96px;
   height: 54px;
   border-radius: 8px;
-  object-fit: cover;
-  background: #10141c;
+  object-fit: contain;
+  object-position: center;
+  background: #1c2433;
   flex: 0 0 auto;
+}
+.event-art.fallback {
+  padding: 6px 18px;
+  box-sizing: border-box;
+  background: #243044;
 }
 .live {
   display: inline-block;

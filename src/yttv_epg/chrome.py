@@ -21,9 +21,9 @@ _PROFILE_JUNK_DIRS = ("BrowserMetrics", "Crashpad", "Crash Reports")
 _LOGIN_HOSTS = ("accounts.google.com", "accounts.youtube.com", "signin.google.com")
 KEEPALIVE_FETCH = (
     "(async () => {"
-    " const res = await fetch('https://tv.youtube.com/?keepalive=1',"
-    "  {credentials:'include', cache:'no-store', redirect:'follow'});"
-    " return {status: res.status, redirected: res.redirected, url: location.href};"
+    " const res = await fetch(location.origin + '/',"
+    "  {credentials:'include', cache:'no-store', redirect:'manual'});"
+    " return {status: res.status, redirected: res.redirected, type: res.type, url: location.href};"
     "})()"
 )
 _FETCH_FORBIDDEN = {
@@ -179,7 +179,8 @@ def is_youtube_tv_app_url(url: str | None) -> bool:
     if not is_youtube_tv_url(url):
         return False
     path = _url_path(url)
-    return path != "/welcome" and not path.startswith("/welcome/") and path != "/onboarding" and not path.startswith("/onboarding/")
+    logged_out_paths = ("/welcome", "/onboard", "/onboarding")
+    return not any(path == item or path.startswith(item + "/") for item in logged_out_paths)
 
 
 def is_youtube_tv_detour_url(url: str | None) -> bool:
@@ -341,6 +342,7 @@ async def innertube_post(
         f" const res = await fetch({json.dumps(url)}, {{"
         "  method: 'POST',"
         "  credentials: 'include',"
+        "  redirect: 'manual',"
         f"  headers: {json.dumps(safe_headers)},"
         f"  body: {json.dumps(json.dumps(payload, separators=(',', ':')))}"
         " });"
@@ -365,6 +367,8 @@ async def innertube_post(
         status = int(value.get("status") or 0)
     except (TypeError, ValueError) as exc:
         raise ChromeError("Chromium fetch returned no HTTP status.") from exc
+    if status in {0, 301, 302, 303, 307, 308}:
+        raise ChromeError("Chromium InnerTube fetch did not stay on youtubei.")
     raw = value.get("body")
     if raw in (None, ""):
         return status, None
@@ -426,6 +430,7 @@ async def status(http: httpx.AsyncClient, cdp_url: str) -> dict[str, Any]:
     on_login = False
     on_app = False
     on_detour = False
+    on_welcome = False
     try:
         pages = await _pages(http, cdp_url.rstrip("/"))
         login_page = next((item for item in pages if is_google_login_url(item.get("url"))), None)
@@ -436,6 +441,7 @@ async def status(http: httpx.AsyncClient, cdp_url: str) -> dict[str, Any]:
         on_login = login_page is not None
         on_app = login_page is None and app_page is not None
         on_detour = login_page is None and detour_page is not None
+        on_welcome = bool(url) and is_youtube_tv_url(url) and not on_login and not on_app and not on_detour
     except ChromeError:
         url = None
     return {
@@ -446,6 +452,7 @@ async def status(http: httpx.AsyncClient, cdp_url: str) -> dict[str, Any]:
         "on_login": on_login,
         "on_app": on_app,
         "on_detour": on_detour,
+        "on_welcome": on_welcome,
     }
 
 

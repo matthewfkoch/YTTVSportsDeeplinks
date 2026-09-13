@@ -765,7 +765,7 @@ def test_square_network_logo_is_used_when_no_poster():
     assert airings[0].artwork == "https://yt3.ggpht.com/NBCPeacockLogo=w960-h540-p-ns-nd"
 
 
-def test_tiny_chip_icon_is_not_event_art():
+def test_tiny_chip_icon_is_used_when_no_poster():
     payload = {
         "epgAiringRenderer": {
             "title": {"simpleText": "Alabama at Kentucky"},
@@ -778,7 +778,7 @@ def test_tiny_chip_icon_is_not_event_art():
         }
     }
     airings = parse_browse(payload, fallback_minutes=60)
-    assert airings[0].artwork == ""
+    assert airings[0].artwork == "https://yt3.ggpht.com/tinyNetworkIcon=w960-h540-p-ns-nd"
 
 
 def test_nested_station_logo_does_not_replace_poster():
@@ -834,3 +834,102 @@ def test_merge_keeps_artwork_when_longer_title_wins():
     merged = merge_airings([poster, named])
     assert merged[0].title == "Alabama at Kentucky"
     assert merged[0].artwork == poster.artwork
+
+
+def test_game_card_team_images_become_artwork():
+    payload = {
+        "unpluggedGameCardRenderer": {
+            "header": {
+                "unpluggedGameCardMatchupHeaderRenderer": {
+                    "startTeamPrimaryText": {
+                        "accessibility": {"accessibilityData": {"label": "Penn State Nittany Lions football"}}
+                    },
+                    "endTeamPrimaryText": {
+                        "accessibility": {"accessibilityData": {"label": "Temple Owls football"}}
+                    },
+                    "startTeamPrimaryImage": {
+                        "thumbnails": [
+                            {"url": "//yt3.ggpht.com/PennStateLogo=ns-nd", "width": 720, "height": 720}
+                        ]
+                    },
+                    "endTeamPrimaryImage": {
+                        "thumbnails": [
+                            {"url": "//yt3.ggpht.com/TempleLogo=ns-nd", "width": 720, "height": 720}
+                        ]
+                    },
+                }
+            },
+            "primaryText": {"runs": [{"text": "Sep 12 • ESPN2"}]},
+            "secondaryText": {"runs": [{"text": "NCAA Football"}]},
+        }
+    }
+    now = datetime(2026, 9, 9, 23, 0, tzinfo=timezone.utc)
+    airings = parse_browse(payload, now=now, fallback_minutes=180)
+    assert airings[0].artwork == "https://yt3.ggpht.com/PennStateLogo=w960-h540-p-ns-nd"
+
+
+def test_row_station_icon_fills_airing_without_poster():
+    payload = {
+        "epgRowRenderer": {
+            "station": {
+                "epgStationRenderer": {
+                    "icon": {
+                        "accessibility": {"accessibilityData": {"label": "Universo"}},
+                        "thumbnails": [
+                            {"url": "//yt3.ggpht.com/UniversoChip=ns-nd", "width": 60, "height": 60}
+                        ],
+                    }
+                }
+            },
+            "airings": [
+                {
+                    "epgAiringRenderer": {
+                        "title": {"simpleText": "Inter Milan at Udinese Calcio"},
+                        "navigationEndpoint": {"watchEndpoint": {"videoId": "universo001"}},
+                    }
+                }
+            ],
+        }
+    }
+    airings = parse_browse(payload, fallback_minutes=60)
+    assert airings[0].station == "Universo"
+    assert airings[0].artwork == "https://yt3.ggpht.com/UniversoChip=w960-h540-p-ns-nd"
+
+
+def test_row_does_not_copy_neighbor_poster():
+    payload = {
+        "epgRowRenderer": {
+            "station": {
+                "epgStationRenderer": {
+                    "icon": {"accessibility": {"accessibilityData": {"label": "ESPN"}}}
+                }
+            },
+            "airings": [
+                {
+                    "epgAiringRenderer": {
+                        "title": {"simpleText": "Alabama at Kentucky"},
+                        "thumbnail": {
+                            "thumbnails": [
+                                {
+                                    "url": "//yt3.ggpht.com/AlabamaKentuckyArt=ns-nd",
+                                    "width": 3840,
+                                    "height": 2160,
+                                }
+                            ]
+                        },
+                        "navigationEndpoint": {"watchEndpoint": {"videoId": "alabamakent"}},
+                    }
+                },
+                {
+                    "epgAiringRenderer": {
+                        "title": {"simpleText": "SportsCenter"},
+                        "navigationEndpoint": {"watchEndpoint": {"videoId": "sportscent1"}},
+                    }
+                },
+            ],
+        }
+    }
+    airings = parse_browse(payload, fallback_minutes=60)
+    by_id = {item.video_id: item for item in airings}
+    assert by_id["alabamakent"].artwork == "https://yt3.ggpht.com/AlabamaKentuckyArt=w960-h540-p-ns-nd"
+    assert by_id["sportscent1"].artwork == ""

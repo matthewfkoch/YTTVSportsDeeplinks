@@ -63,12 +63,34 @@ LINEAR_STATIONS = {
 MIN_UNIX_TS = 946684800  # 2000-01-01
 MAX_UNIX_TS = 4102444800  # 2100-01-01
 MIN_ARTWORK_WIDTH = 640
-MIN_FALLBACK_ARTWORK_WIDTH = 200
 ARTWORK_WIDTH = 960
 ARTWORK_HEIGHT = 540
 GUIDE_ARTWORK_WIDTH = 720
 GUIDE_ARTWORK_HEIGHT = 540
 POSTER_ARTWORK_SCORE = 1_000_000
+ICON_ARTWORK_SCORE = 1
+ARTWORK_HOSTS = ("ggpht.com", "googleusercontent.com", "ytimg.com")
+ARTWORK_FOLLOW_KEYS = {"header", "station"}
+ARTWORK_SKIP_KEYS = {
+    "airings",
+    "chips",
+    "clickTrackingParams",
+    "command",
+    "commandMetadata",
+    "commands",
+    "content",
+    "contents",
+    "continuation",
+    "continuations",
+    "items",
+    "loggingContext",
+    "menu",
+    "navigationEndpoint",
+    "onTap",
+    "overlay",
+    "overlays",
+    "trackingParams",
+}
 
 
 @dataclass
@@ -237,6 +259,7 @@ class _WalkCtx:
     tab: str = ""
     entity_id: str = ""
     artwork: str = ""
+    artwork_score: int = 0
 
     def child(self, **kwargs: Any) -> _WalkCtx:
         data = self.__dict__.copy()
@@ -344,7 +367,10 @@ def _context_from_node(node: dict[str, Any], ctx: _WalkCtx) -> _WalkCtx:
         if inferred != "Other":
             sport = inferred
     score, url = _best_artwork(node)
-    artwork = url if url and (score >= POSTER_ARTWORK_SCORE or not ctx.artwork) else ctx.artwork
+    if url and score > ctx.artwork_score:
+        artwork, artwork_score = url, score
+    else:
+        artwork, artwork_score = ctx.artwork, ctx.artwork_score
     return ctx.child(
         title=title,
         station=station,
@@ -353,6 +379,7 @@ def _context_from_node(node: dict[str, Any], ctx: _WalkCtx) -> _WalkCtx:
         live=live,
         sport=sport,
         artwork=artwork,
+        artwork_score=artwork_score,
     )
 
 
@@ -436,6 +463,11 @@ def _airing_from_game_card(
     video_id = _video_id_from_watch(watch_ep) or _bare_video_id(card) or ""
     entity_id = _entity_id_from_node(card) or _game_card_entity(card)
     stored_id = video_id if _ok_video_id(video_id) else f"{title}|{station}|{int(_as_utc(start).timestamp())}"
+    score, url = _best_artwork(card)
+    if ctx.artwork and ctx.artwork_score >= score:
+        artwork, artwork_score = ctx.artwork, ctx.artwork_score
+    else:
+        artwork, artwork_score = url or ctx.artwork, score if url else ctx.artwork_score
     return _to_airing(
         stored_id,
         _WalkCtx(
@@ -447,7 +479,8 @@ def _airing_from_game_card(
             sport=sport or "",
             tab=ctx.tab,
             entity_id=entity_id,
-            artwork=_artwork_from_node(card),
+            artwork=artwork,
+            artwork_score=artwork_score,
         ),
         now,
         fallback_minutes,
@@ -885,10 +918,6 @@ def _ok_video_id(value: Any) -> bool:
     return isinstance(value, str) and bool(VIDEO_ID_RE.match(value))
 
 
-def _artwork_from_node(node: dict[str, Any]) -> str:
-    return _best_artwork(node)[1]
-
-
 def _best_artwork(node: dict[str, Any]) -> tuple[int, str]:
     best: tuple[int, str] = (0, "")
     for item in _thumbnail_entries(node):
@@ -904,24 +933,65 @@ def _best_artwork(node: dict[str, Any]) -> tuple[int, str]:
 def _artwork_score(width: int, height: int) -> int:
     if width >= MIN_ARTWORK_WIDTH and (not height or width >= int(height * 1.2)):
         return POSTER_ARTWORK_SCORE + width
-    if width >= MIN_FALLBACK_ARTWORK_WIDTH:
+    if width > 0:
         return width
-    return 0
+    return ICON_ARTWORK_SCORE
 
 
-def _thumbnail_entries(node: dict[str, Any]) -> list[dict[str, Any]]:
+def _is_image_key(key: str) -> bool:
+    return (
+        key in {"thumbnail", "thumbnails", "primaryThumbnail", "icon", "logo", "image", "images", "poster"}
+        or key.endswith("Image")
+        or key.endswith("Thumbnail")
+    )
+
+
+def _thumbnail_entries(node: dict[str, Any], depth: int = 0) -> list[dict[str, Any]]:
     found: list[dict[str, Any]] = []
-    for key in ("thumbnail", "primaryThumbnail"):
-        value = node.get(key)
+    if depth > 6:
+        return found
+    for key, value in node.items():
+        if key in ARTWORK_SKIP_KEYS:
+            continue
+        if _is_image_key(key):
+            found.extend(_images_from_value(value))
+            continue
+        follow = key in ARTWORK_FOLLOW_KEYS or (depth > 0 and key.endswith("Renderer"))
+        if not follow:
+            continue
         if isinstance(value, dict):
-            thumbs = value.get("thumbnails")
-            if isinstance(thumbs, list):
-                found.extend(item for item in thumbs if isinstance(item, dict))
-            elif isinstance(value.get("url"), str):
-                found.append(value)
-        elif isinstance(value, list):
-            found.extend(item for item in value if isinstance(item, dict))
+            found.extend(_thumbnail_entries(value, depth + 1))
+        elif isinstance(value, list) and key in ARTWORK_FOLLOW_KEYS:
+            for item in value:
+                if isinstance(item, dict):
+                    found.extend(_thumbnail_entries(item, depth + 1))
     return found
+
+
+def _images_from_value(value: Any) -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = []
+    if isinstance(value, dict):
+        thumbs = value.get("thumbnails")
+        if isinstance(thumbs, list):
+            found.extend(item for item in thumbs if isinstance(item, dict) and item.get("url"))
+        sources = value.get("sources")
+        if isinstance(sources, list):
+            found.extend(item for item in sources if isinstance(item, dict) and item.get("url"))
+        if isinstance(value.get("url"), str):
+            found.append(value)
+        for nested_key in ("image", "thumbnail"):
+            nested = value.get(nested_key)
+            if nested is not None and nested is not value:
+                found.extend(_images_from_value(nested))
+    elif isinstance(value, list):
+        for item in value:
+            found.extend(_images_from_value(item))
+    return found
+
+
+def _artwork_host_ok(host: str) -> bool:
+    lowered = host.lower()
+    return any(token in lowered for token in ARTWORK_HOSTS)
 
 
 def _normalize_artwork_url(value: Any) -> str:
@@ -933,7 +1003,7 @@ def _normalize_artwork_url(value: Any) -> str:
     if not text.startswith("https://"):
         return ""
     host = urlparse(text).netloc.lower()
-    if "ggpht.com" not in host and "googleusercontent.com" not in host:
+    if not _artwork_host_ok(host):
         return ""
     return sized_artwork_url(text, ARTWORK_WIDTH, ARTWORK_HEIGHT)
 

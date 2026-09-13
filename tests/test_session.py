@@ -84,6 +84,15 @@ def test_sapisidhash_header_shape():
     assert len(digest) == 40
 
 
+def test_sapisidhash_uses_third_party_sapisid_without_login_info():
+    header = sapisidhash_header(
+        [{"name": "__Secure-3PAPISID", "value": "secret", "domain": ".youtube.com"}],
+        origin="https://tv.youtube.com",
+    )
+    assert "SAPISIDHASH " in header
+    assert "SAPISID3PHASH " in header
+
+
 def test_session_store_persists_cookies(tmp_path: Path):
     store = SessionStore(tmp_path, "unit-test-secret")
     session = SavedSession(kind="cookies", cookies=[{"name": "SAPISID", "value": "abc"}])
@@ -93,6 +102,16 @@ def test_session_store_persists_cookies(tmp_path: Path):
     assert loaded.cookies[0]["value"] == "abc"
     store.clear()
     assert store.load() is None
+
+
+def test_session_store_preserves_browser_source(tmp_path: Path):
+    store = SessionStore(tmp_path, "unit-test-secret")
+    store.save(SavedSession(kind="browser", cookies=[{"name": "SAPISID", "value": "abc"}]))
+
+    loaded = store.load()
+
+    assert loaded is not None
+    assert loaded.kind == "browser"
 
 
 def test_legacy_oauth_file_is_dropped(tmp_path: Path):

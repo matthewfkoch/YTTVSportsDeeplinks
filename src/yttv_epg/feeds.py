@@ -25,6 +25,15 @@ def logo_url(base_url: str) -> str:
     return f"{base_url.rstrip('/')}{LOGO_PATH}"
 
 
+def programme_icon(airing: Airing, base_url: str = "") -> str:
+    if airing.artwork:
+        return (
+            sized_artwork_url(airing.artwork, GUIDE_ARTWORK_WIDTH, GUIDE_ARTWORK_HEIGHT)
+            or airing.artwork
+        )
+    return logo_url(base_url) if base_url else ""
+
+
 def xmltv(assignments: list[LaneAssignment], lane_count: int, *, base_url: str = "") -> str:
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -53,12 +62,10 @@ def xmltv(assignments: list[LaneAssignment], lane_count: int, *, base_url: str =
             lines.append(f"    <category>{escape(row.airing.channel)}</category>")
         if row.airing.deeplink:
             lines.append(f"    <url>{escape(row.airing.deeplink)}</url>")
-        if row.airing.artwork:
-            icon = sized_artwork_url(
-                row.airing.artwork, GUIDE_ARTWORK_WIDTH, GUIDE_ARTWORK_HEIGHT
-            )
+        icon_src = programme_icon(row.airing, base_url)
+        if icon_src:
             lines.append(
-                f'    <icon src="{escape(icon)}" width="{GUIDE_ARTWORK_WIDTH}" '
+                f'    <icon src="{escape(icon_src)}" width="{GUIDE_ARTWORK_WIDTH}" '
                 f'height="{GUIDE_ARTWORK_HEIGHT}" />'
             )
         lines.append("  </programme>")
@@ -148,9 +155,8 @@ def whatson_payload(lane: int, airing: Airing | None) -> dict:
         "sport": airing.sport,
         "start": airing.start.astimezone(timezone.utc).isoformat(),
         "end": airing.end.astimezone(timezone.utc).isoformat(),
+        "artwork": airing.artwork or LOGO_PATH,
     }
-    if airing.artwork:
-        payload["artwork"] = airing.artwork
     return payload
 
 

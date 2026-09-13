@@ -66,6 +66,24 @@ def test_m3u_uses_whatson_resolver():
     assert 'tvg-logo="http://192.168.1.10:8095/static/logo.png"' in body
 
 
+def test_xmltv_uses_product_logo_when_event_has_no_poster():
+    start = datetime(2026, 9, 4, 20, 0, tzinfo=timezone.utc)
+    game = Airing(
+        video_id="tinyiconxx1",
+        title="Inter Milan at Udinese Calcio",
+        station="Universo",
+        kind="event",
+        start=start,
+        end=start + timedelta(hours=3),
+        deeplink="https://tv.youtube.com/watch/tinyiconxx1",
+    )
+    body = xmltv([LaneAssignment(lane=1, airing=game)], lane_count=1, base_url="http://192.168.1.10:8095")
+    assert (
+        '<icon src="http://192.168.1.10:8095/static/logo.png" '
+        'width="720" height="540" />'
+    ) in body
+
+
 def test_apituner_export_is_separate_source():
     rows = apituner_export(
         base_url="http://yttvsportsdeeplinks:8095",
@@ -82,6 +100,22 @@ def test_apituner_export_is_separate_source():
 def test_whatson_payload_empty_lane():
     payload = whatson_payload(3, None)
     assert payload == {"ok": False, "lane": 3, "deeplink_url": None}
+
+
+def test_whatson_payload_includes_fallback_artwork():
+    payload = whatson_payload(1, _airing())
+    assert payload["artwork"].startswith("https://yt3.ggpht.com/")
+    start = datetime(2026, 9, 4, 20, 0, tzinfo=timezone.utc)
+    bare = Airing(
+        video_id="tinyiconxx1",
+        title="Inter Milan at Udinese Calcio",
+        station="Universo",
+        kind="event",
+        start=start,
+        end=start + timedelta(hours=3),
+        deeplink="https://tv.youtube.com/watch/tinyiconxx1",
+    )
+    assert whatson_payload(1, bare)["artwork"] == "/static/logo.png"
 
 
 def test_pack_then_xmltv_round_trip():

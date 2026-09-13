@@ -18,7 +18,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from yttv_epg.branding import EYEBROW, PRODUCT_NAME, for_ui
 from yttv_epg.catalog import Catalog
 from yttv_epg.chrome import ChromeError, available as chrome_available
-from yttv_epg.chrome import chrome_signed_in, clear_browser_cookies, fetch_cookies
+from yttv_epg.chrome import clear_browser_cookies, fetch_cookies
 from yttv_epg.chrome import innertube_post, keepalive_youtube_tv, open_youtube_tv
 from yttv_epg.chrome import prune_chrome_profile, status as chrome_status
 from yttv_epg.config import settings
@@ -204,13 +204,31 @@ def _loopback_host(host: str) -> bool:
     return label in {"127.0.0.1", "localhost", "::1", "0.0.0.0"} or label.endswith(".localhost")
 
 
-def _session_view(meta: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+async def _chrome_snapshot() -> dict[str, Any]:
+    if not settings.enable_chrome:
+        return {}
+    try:
+        return await chrome_status(state.http, settings.cdp_url)
+    except Exception:
+        return {}
+
+
+def _session_view(
+    meta: Optional[dict[str, Any]] = None,
+    chrome: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
     meta = meta if meta is not None else state.catalog.meta()
     last_error = for_ui(meta.get("last_error")) or ""
     signed_in = state.store.signed_in
+    chrome = chrome or {}
+    live = bool(chrome.get("signed_in") and chrome.get("on_app"))
+    if live:
+        expired = False
+    else:
+        expired = bool(signed_in and session_expired_message(last_error))
     return {
         "signed_in": signed_in,
-        "session_expired": bool(signed_in and session_expired_message(last_error)),
+        "session_expired": expired,
         "last_error": last_error or None,
     }
 
@@ -233,18 +251,25 @@ async def _touch_chrome_login() -> None:
         return
 
 
-async def _mark_refresh_failure(exc: Exception) -> None:
+GUIDE_STILL_SIGNED_IN = "Guide refresh failed. YouTube TV is still signed in."
+
+
+async def _mark_refresh_failure(exc: Exception) -> str:
     message = str(exc)
     if session_expired_message(message) and settings.enable_chrome:
         try:
-            cookies = await fetch_cookies(state.http, settings.cdp_url)
-            if chrome_signed_in(cookies):
-                await _sync_session_from_chrome()
-                state.catalog.set_error("Guide refresh failed. YouTube TV is still signed in.")
-                return
+            chrome = await chrome_status(state.http, settings.cdp_url)
+            if (
+                chrome.get("signed_in")
+                and chrome.get("on_app")
+                and await _sync_session_from_chrome()
+            ):
+                state.catalog.set_error(GUIDE_STILL_SIGNED_IN)
+                return GUIDE_STILL_SIGNED_IN
         except (ChromeError, httpx.HTTPError, RuntimeError):
             pass
     state.catalog.set_error(message)
+    return message
 
 
 def _public_base_url(request: Request) -> str:
@@ -263,23 +288,26 @@ async def _sync_session_from_chrome() -> bool:
     if not settings.enable_chrome:
         return False
     try:
-        cookies = await fetch_cookies(state.http, settings.cdp_url)
-        if not chrome_signed_in(cookies):
+        chrome = await chrome_status(state.http, settings.cdp_url)
+        if not chrome.get("signed_in") or not chrome.get("on_app"):
             return False
-        cookies = require_youtube_tv_cookies(cookies)
+        cookies = require_youtube_tv_cookies(await fetch_cookies(state.http, settings.cdp_url))
     except (ChromeError, CookieError, httpx.HTTPError):
         return False
-    state.session = SavedSession(kind="cookies", cookies=cookies)
+    state.session = SavedSession(kind="browser", cookies=cookies)
     state.store.save(state.session)
     state.innertube.set_browser_post(_browser_innertube_post)
     return True
 
 
-async def _activate_cookies(cookies: list[dict[str, str]]) -> dict[str, Any]:
+async def _activate_cookies(
+    cookies: list[dict[str, str]],
+    *,
+    use_browser: bool = False,
+) -> dict[str, Any]:
     cookies = require_youtube_tv_cookies(cookies)
-    session = SavedSession(kind="cookies", cookies=cookies)
-    if settings.enable_chrome:
-        state.innertube.set_browser_post(_browser_innertube_post)
+    session = SavedSession(kind="browser" if use_browser else "cookies", cookies=cookies)
+    state.innertube.set_browser_post(_browser_innertube_post if use_browser else None)
     try:
         client_name = await state.innertube.probe(session)
     except MineError as exc:
@@ -331,7 +359,7 @@ async def refresh_catalog() -> dict[str, Any]:
             session = _ensure_session()
             try:
                 mined = await state.innertube.mine(session, settings.fallback_duration_min)
-            except (MineError, httpx.HTTPError) as exc:
+            except (ChromeError, MineError, httpx.HTTPError) as exc:
                 await _mark_refresh_failure(exc)
                 raise
             events = merge_airings(
@@ -404,7 +432,7 @@ async def refresh_watch_ids() -> dict[str, Any]:
             if candidates:
                 try:
                     resolved = await state.innertube.resolve_soon(session, dict(CLIENTS[0]), candidates)
-                except (MineError, httpx.HTTPError) as exc:
+                except (ChromeError, MineError, httpx.HTTPError) as exc:
                     await _mark_refresh_failure(exc)
                     raise
                 for previous, updated in zip(candidates, resolved):
@@ -495,7 +523,7 @@ app.mount("/static", StaticFiles(directory=str(ROOT / "static")), name="static")
 @app.get("/health")
 async def health() -> dict[str, Any]:
     meta = state.catalog.meta()
-    auth = _session_view(meta)
+    auth = _session_view(meta, await _chrome_snapshot())
     return {
         "ok": True,
         "signed_in": auth["signed_in"],
@@ -510,7 +538,7 @@ async def health() -> dict[str, Any]:
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request) -> HTMLResponse:
     meta = state.catalog.meta()
-    auth = _session_view(meta)
+    auth = _session_view(meta, await _chrome_snapshot())
     all_events = state.catalog.events(kind="event")
     hidden = state.catalog.hidden_sports()
     hidden_channels = state.catalog.hidden_channels()
@@ -555,7 +583,7 @@ async def dashboard(request: Request) -> HTMLResponse:
 @app.get("/api/status")
 async def api_status() -> dict[str, Any]:
     meta = state.catalog.meta()
-    auth = _session_view(meta)
+    auth = _session_view(meta, await _chrome_snapshot())
     return {
         "signed_in": auth["signed_in"],
         "session_expired": auth["session_expired"],
@@ -611,7 +639,7 @@ async def auth_chrome_capture() -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="In-container Chromium is disabled.")
     try:
         cookies = await fetch_cookies(state.http, settings.cdp_url)
-        return await _activate_cookies(cookies)
+        return await _activate_cookies(cookies, use_browser=True)
     except CookieError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ChromeError as exc:
@@ -691,7 +719,8 @@ async def api_refresh() -> dict[str, Any]:
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        stored = for_ui(state.catalog.meta().get("last_error")) or str(exc)
+        raise HTTPException(status_code=502, detail=stored) from exc
 
 
 @app.get("/events")

@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from yttv_epg.branding import LOGO_PATH
 from yttv_epg.parse import Airing
 from yttv_epg.sports import clean_station, event_channel
 
@@ -51,6 +52,8 @@ def format_refresh(value: str, *, now: datetime | None = None, tz: ZoneInfo | No
 def event_for_ui(item: Airing, *, tz: ZoneInfo | None = None, now: datetime | None = None) -> dict:
     zone = tz or local_tz()
     payload = item.to_dict()
+    payload["artwork_fallback"] = not bool(item.artwork)
+    payload["artwork"] = item.artwork or LOGO_PATH
     payload["when"] = format_when(item.start, now=now, tz=zone)
     payload["clock"] = format_clock(item.start, tz=zone)
     payload["day"] = format_day_heading(item.start, now=now, tz=zone)

@@ -330,10 +330,31 @@ async def test_browser_post_is_used_instead_of_httpx(patched_pages):
 
 
 @pytest.mark.asyncio
-async def test_browser_post_error_falls_back_to_httpx(patched_pages):
+async def test_browser_session_never_uses_httpx_without_chrome(patched_pages):
     from yttv_epg.chrome import ChromeError
 
+    http_calls: list[str] = []
+
     def handler(request: httpx.Request) -> httpx.Response:
+        http_calls.append(str(request.url))
+        return httpx.Response(200, json={"contents": []})
+
+    session = SavedSession(kind="browser", cookies=SESSION.cookies)
+    innertube = _client_for(handler)
+
+    with pytest.raises(ChromeError, match="not ready"):
+        await innertube.mine(session)
+    assert http_calls == []
+
+
+@pytest.mark.asyncio
+async def test_browser_post_error_does_not_send_stale_cookies_over_httpx(patched_pages):
+    from yttv_epg.chrome import ChromeError
+
+    http_calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        http_calls.append(str(request.url))
         body = json.loads(request.content)
         if body.get("browseId") == "FEunplugged_epg":
             return httpx.Response(200, json={"contents": [_card("abcdefghijk", "Alabama vs Auburn")]})
@@ -344,12 +365,13 @@ async def test_browser_post_error_falls_back_to_httpx(patched_pages):
 
     innertube = _client_for(handler)
     innertube.set_browser_post(browser_post)
-    result = await innertube.mine(SESSION)
-    assert any(item.video_id == "abcdefghijk" for item in result.airings)
+    with pytest.raises(ChromeError, match="no tv.youtube.com tab"):
+        await innertube.mine(SESSION)
+    assert http_calls == []
 
 
 @pytest.mark.asyncio
-async def test_browser_post_401_falls_back_to_httpx(patched_pages):
+async def test_browser_post_401_does_not_send_stale_cookies_over_httpx(patched_pages):
     http_calls: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -364,6 +386,6 @@ async def test_browser_post_401_falls_back_to_httpx(patched_pages):
 
     innertube = _client_for(handler)
     innertube.set_browser_post(browser_post)
-    result = await innertube.mine(SESSION)
-    assert http_calls
-    assert any(item.video_id == "abcdefghijk" for item in result.airings)
+    with pytest.raises(MineError, match="session expired"):
+        await innertube.mine(SESSION)
+    assert http_calls == []

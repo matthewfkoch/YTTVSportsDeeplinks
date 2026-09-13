@@ -19,8 +19,9 @@ class SavedSession:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Optional["SavedSession"]:
         cookies = data.get("cookies")
-        if data.get("kind") == "cookies" and isinstance(cookies, list):
-            return cls(kind="cookies", cookies=[c for c in cookies if isinstance(c, dict)])
+        kind = data.get("kind")
+        if kind in {"cookies", "browser"} and isinstance(cookies, list):
+            return cls(kind=str(kind), cookies=[c for c in cookies if isinstance(c, dict)])
         return None
 
 

@@ -507,8 +507,10 @@ async def test_refresh_401_does_not_flag_expired_when_chrome_signed_in():
     with TestClient(app) as client:
         with (
             patch("yttv_epg.app.settings.enable_chrome", True),
-            patch("yttv_epg.app.fetch_cookies", new=AsyncMock(return_value=[{"name": "LOGIN_INFO"}])),
-            patch("yttv_epg.app.chrome_signed_in", return_value=True),
+            patch(
+                "yttv_epg.app.chrome_status",
+                new=AsyncMock(return_value={"available": True, "signed_in": True, "on_app": True}),
+            ),
             patch("yttv_epg.app._sync_session_from_chrome", new=AsyncMock(return_value=True)),
         ):
             await _mark_refresh_failure(MineError("YTTV session expired. Sign in again on tv.youtube.com."))
@@ -517,4 +519,102 @@ async def test_refresh_401_does_not_flag_expired_when_chrome_signed_in():
         assert "still signed in" in str(meta.get("last_error") or "").lower()
         health = client.get("/health").json()
         assert health["session_expired"] is False
+        client.post("/api/auth/logout")
+
+
+def test_api_refresh_reports_still_signed_in_not_expired_when_chrome_live():
+    from yttv_epg.app import state
+    from yttv_epg.innertube import MineError
+    from yttv_epg.session_store import SavedSession
+
+    with TestClient(app) as client:
+        state.session = SavedSession(
+            kind="cookies",
+            cookies=[{"name": "SAPISID", "value": "x", "domain": ".youtube.com"}],
+        )
+        state.store.save(state.session)
+        try:
+            with (
+                patch("yttv_epg.app.settings.enable_chrome", True),
+                patch("yttv_epg.app._touch_chrome_login", new=AsyncMock()),
+                patch("yttv_epg.app._sync_session_from_chrome", new=AsyncMock(return_value=True)),
+                patch("yttv_epg.app._refresh_espn_listings", new=AsyncMock(return_value=False)),
+                patch(
+                    "yttv_epg.app.chrome_status",
+                    new=AsyncMock(return_value={"available": True, "signed_in": True, "on_app": True}),
+                ),
+                patch.object(
+                    state.innertube,
+                    "mine",
+                    new=AsyncMock(
+                        side_effect=MineError("YTTV session expired. Sign in again on tv.youtube.com.")
+                    ),
+                ),
+            ):
+                response = client.post("/api/refresh")
+            assert response.status_code == 502
+            detail = response.json()["detail"]
+            assert "still signed in" in detail.lower()
+            assert "session expired" not in detail.lower()
+            home = client.get("/")
+            assert home.status_code == 200
+            assert "YTTV session expired" not in home.text
+            assert home.text.count("Guide refresh failed") == 1
+            assert "still signed in" in home.text.lower()
+        finally:
+            client.post("/api/auth/logout")
+
+
+@pytest.mark.asyncio
+async def test_refresh_401_keeps_session_when_only_third_party_sapisid_remains():
+    from unittest.mock import AsyncMock, patch
+
+    from yttv_epg.app import _mark_refresh_failure, state
+    from yttv_epg.innertube import MineError, session_expired_message
+
+    cookies = [{"name": "__Secure-3PAPISID", "value": "x", "domain": ".youtube.com"}]
+    with TestClient(app) as client:
+        with (
+            patch("yttv_epg.app.settings.enable_chrome", True),
+            patch(
+                "yttv_epg.app.chrome_status",
+                new=AsyncMock(
+                    return_value={"available": True, "signed_in": True, "on_app": True}
+                ),
+            ),
+            patch("yttv_epg.app.fetch_cookies", new=AsyncMock(return_value=cookies)),
+            patch("yttv_epg.app._sync_session_from_chrome", new=AsyncMock(return_value=True)),
+        ):
+            await _mark_refresh_failure(MineError("YTTV session expired. Sign in again on tv.youtube.com."))
+        meta = state.catalog.meta()
+        assert not session_expired_message(meta.get("last_error"))
+        assert "still signed in" in str(meta.get("last_error") or "").lower()
+        client.post("/api/auth/logout")
+
+
+@pytest.mark.asyncio
+async def test_refresh_401_flags_expired_when_chrome_is_on_welcome():
+    from unittest.mock import AsyncMock, patch
+
+    from yttv_epg.app import _mark_refresh_failure, state
+    from yttv_epg.innertube import MineError, session_expired_message
+
+    with TestClient(app) as client:
+        with (
+            patch("yttv_epg.app.settings.enable_chrome", True),
+            patch(
+                "yttv_epg.app.chrome_status",
+                new=AsyncMock(
+                    return_value={
+                        "available": True,
+                        "signed_in": True,
+                        "on_app": False,
+                        "on_welcome": True,
+                    }
+                ),
+            ),
+            patch("yttv_epg.app._sync_session_from_chrome", new=AsyncMock(return_value=False)),
+        ):
+            await _mark_refresh_failure(MineError("YTTV session expired. Sign in again on tv.youtube.com."))
+        assert session_expired_message(state.catalog.meta().get("last_error"))
         client.post("/api/auth/logout")

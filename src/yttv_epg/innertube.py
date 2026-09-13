@@ -98,11 +98,9 @@ class InnerTubeClient:
         self._sema: Optional[asyncio.Semaphore] = None
         self._sema_loop: Optional[asyncio.AbstractEventLoop] = None
         self._browser_post = browser_post
-        self._browser_failed = False
 
     def set_browser_post(self, browser_post: Optional[BrowserPost]) -> None:
         self._browser_post = browser_post
-        self._browser_failed = False
 
     def _http_sema(self) -> asyncio.Semaphore:
         loop = asyncio.get_running_loop()
@@ -135,7 +133,6 @@ class InnerTubeClient:
 
     async def mine(self, session: SavedSession, fallback_minutes: int = 180) -> MineResult:
         errors: list[str] = []
-        self._browser_failed = False
         try:
             for client in CLIENTS:
                 result = await self._mine_client(session, client, fallback_minutes, errors)
@@ -440,6 +437,8 @@ class InnerTubeClient:
         client: dict[str, str],
         body: dict[str, Any],
     ) -> dict[str, Any]:
+        if session.kind == "browser" and self._browser_post is None:
+            raise ChromeError("Chromium session is not ready for guide requests.")
         payload = {
             "context": {
                 "client": {
@@ -489,15 +488,9 @@ class InnerTubeClient:
         headers: dict[str, str],
         payload: dict[str, Any],
     ) -> tuple[int, Any]:
-        if self._browser_post and not self._browser_failed:
-            try:
-                async with self._http_sema():
-                    status, data = await self._browser_post(url, headers, payload)
-            except ChromeError:
-                self._browser_failed = True
-            else:
-                if status != 401:
-                    return status, data
+        if self._browser_post:
+            async with self._http_sema():
+                return await self._browser_post(url, headers, payload)
         async with self._http_sema():
             response = await self.http.post(url, json=payload, headers=headers, timeout=45)
         try:

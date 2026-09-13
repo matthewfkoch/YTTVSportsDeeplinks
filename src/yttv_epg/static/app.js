@@ -27,6 +27,7 @@ const boot = {
   allEvents: document.body.dataset.allEvents || "",
   lastError: null,
   primed: false,
+  loginDesktopDismissed: false,
 };
 
 let actionInFlight = false;
@@ -57,7 +58,7 @@ function setUserBusy(active, message) {
 
 function paintSessionStatus(refreshing) {
   if (!sessionStatus) return;
-  if (boot.sessionExpired) {
+  if (boot.sessionExpired && !boot.loginDesktopDismissed) {
     sessionStatus.textContent = "Session expired";
     sessionStatus.className = "status err";
     return;
@@ -97,13 +98,17 @@ function reloadDashboard() {
   window.location.reload();
 }
 
-async function runAction(message, request) {
+async function runAction(message, request, options = {}) {
   errorEl.textContent = "";
   actionInFlight = true;
   showToast(message);
   try {
     const response = await request();
     if (!response.ok) {
+      if (options.reloadOnError) {
+        reloadDashboard();
+        return;
+      }
       if (errorEl) errorEl.textContent = await readError(response);
       setUserBusy(false);
       hideToast();
@@ -112,6 +117,10 @@ async function runAction(message, request) {
     showToast("Updated. Reloading…");
     reloadDashboard();
   } catch (exc) {
+    if (options.reloadOnError) {
+      reloadDashboard();
+      return;
+    }
     if (errorEl) errorEl.textContent = exc.message || "Request failed";
     setUserBusy(false);
     hideToast();
@@ -155,12 +164,44 @@ document.getElementById("capture-btn")?.addEventListener("click", () => {
 
 refreshBtn?.addEventListener("click", () => {
   setUserBusy(true, "Refreshing the guide…");
-  runAction("Refreshing the guide…", () => fetch("/api/refresh", { method: "POST" }));
+  runAction("Refreshing the guide…", () => fetch("/api/refresh", { method: "POST" }), {
+    reloadOnError: true,
+  });
 });
 
 document.getElementById("logout-btn")?.addEventListener("click", () => {
   runAction("Signing out…", () => fetch("/api/auth/logout", { method: "POST" }));
 });
+
+function chromePageUrl(status) {
+  try {
+    return new URL(status.url || "");
+  } catch {
+    return null;
+  }
+}
+
+function isLiveYoutubeTvApp(status) {
+  if (!status?.signed_in || status.on_login) return false;
+  if (status.on_app) return true;
+  const parsed = chromePageUrl(status);
+  if (!parsed) return false;
+  const host = parsed.hostname.toLowerCase();
+  if (host !== "tv.youtube.com" && !host.endsWith(".tv.youtube.com")) return false;
+  const path = parsed.pathname.replace(/\/+$/, "") || "/";
+  return path === "/" || path.startsWith("/watch");
+}
+
+function dismissLoginDesktop() {
+  const signedAuth = document.getElementById("signed-auth");
+  if (idleAuth) idleAuth.hidden = true;
+  if (signedAuth) signedAuth.hidden = false;
+  if (errorEl) errorEl.textContent = "";
+  boot.signedIn = true;
+  boot.sessionExpired = false;
+  boot.loginDesktopDismissed = true;
+  paintSessionStatus(false);
+}
 
 async function watchChromeLogin() {
   if (!idleAuth || idleAuth.hidden || !document.getElementById("desktop-wrap")) {
@@ -179,6 +220,19 @@ async function watchChromeLogin() {
     }
     if (status.on_login) {
       if (note) note.textContent = "Waiting for you to finish signing in…";
+    } else if (isLiveYoutubeTvApp(status)) {
+      if (note) note.textContent = "Signed in. Saving the session…";
+      showToast("Signed in. Saving the session…");
+      const capture = await fetch("/api/auth/chrome/capture", { method: "POST" });
+      if (capture.ok) {
+        dismissLoginDesktop();
+        hideToast();
+        return;
+      }
+      hideToast();
+      errorEl.textContent = await readError(capture);
+    } else if (status.on_welcome) {
+      if (note) note.textContent = "YouTube TV signed this tab out. Sign in again on tv.youtube.com…";
     } else if (status.on_detour || (status.signed_in && !status.on_app)) {
       if (note) {
         note.textContent = "YouTube TV sent this tab away from the app. Opening tv.youtube.com…";
@@ -191,7 +245,8 @@ async function watchChromeLogin() {
       showToast("Signed in. Saving the session and refreshing the guide…");
       const capture = await fetch("/api/auth/chrome/capture", { method: "POST" });
       if (capture.ok) {
-        reloadDashboard();
+        dismissLoginDesktop();
+        hideToast();
         return;
       }
       hideToast();
@@ -354,7 +409,9 @@ function statusChanged(status) {
   const lastRefresh = status.last_refresh || "";
   const lastError = status.last_error || "";
   if (status.signed_in !== boot.signedIn) return true;
-  if (Boolean(status.session_expired) !== boot.sessionExpired) return true;
+  if (Boolean(status.session_expired) !== boot.sessionExpired) {
+    if (!(boot.loginDesktopDismissed && status.session_expired)) return true;
+  }
   if (lastRefresh !== boot.lastRefresh) return true;
   if (boot.lastError !== null && lastError !== boot.lastError) return true;
   if (!status.refreshing && String(status.all_events ?? "") !== String(boot.allEvents)) return true;

@@ -84,7 +84,7 @@
           <div><dt>Last updated</dt><dd id="last-refresh-value">{{ last_refresh }}</dd></div>
         </dl>
         {% if dropped_events %}<p class="error">{{ dropped_events }} overlapping events exceeded the lane count. Increase <code>LANE_COUNT</code>.</p>{% endif %}
-        {% if last_error and not session_expired %}<p class="error">{{ last_error }}</p>{% endif %}
+        <p class="error" id="guide-error" {% if not last_error or session_expired %}hidden{% endif %}>{% if last_error and not session_expired %}{{ last_error }}{% endif %}</p>
       </article>
       <article class="card">
         <h2>Feeds</h2>
@@ -163,7 +163,7 @@
             >
               <td>{% if event.live %}<span class="live">LIVE</span> {% endif %}{{ event.clock }}</td>
               <td>{{ event.sport or "—" }}</td>
-              <td class="event-title">{% if event.artwork %}<img class="event-art" src="{{ event.artwork }}" alt="" width="96" height="54" loading="lazy">{% endif %}{{ event.title }}</td>
+              <td class="event-title"><img class="event-art{% if event.artwork_fallback %} fallback{% endif %}" src="{{ event.artwork }}" alt="" width="96" height="54" loading="lazy">{{ event.title }}</td>
               <td>{{ event.station or event.channel or "—" }}{% if event.channel and event.station and event.channel != event.station %}<div class="muted">{{ event.channel }}</div>{% endif %}</td>
               <td>
                 {% if event.deeplink %}
@@ -189,6 +189,6 @@
     <span class="toast-spinner" aria-hidden="true"></span>
     <span id="refresh-toast-text">Refreshing the guide…</span>
   </div>
-  <script src="/static/app.js?v=refresh-10"></script>
+  <script src="/static/app.js?v=session-12"></script>
 </body>
 </html>

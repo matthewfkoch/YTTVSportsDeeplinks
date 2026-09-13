@@ -41,6 +41,17 @@ def test_from_cdp_cookies_maps_sapisid():
 def test_chrome_signed_in_requires_sapisid():
     assert chrome_signed_in([{"name": "SID", "value": "x"}]) is False
     assert chrome_signed_in([{"name": "SAPISID", "value": "x", "domain": ".google.com"}]) is False
+    assert chrome_signed_in([{"name": "LOGIN_INFO", "value": "x", "domain": ".youtube.com"}]) is False
+
+
+def test_chrome_signed_in_requires_login_info_with_sapisid():
+    assert chrome_signed_in(
+        [
+            {"name": "__Secure-3PAPISID", "value": "x", "domain": ".youtube.com"},
+            {"name": "LOGIN_INFO", "value": "y", "domain": ".youtube.com"},
+        ]
+    ) is True
+    assert chrome_signed_in([{"name": "SAPISID", "value": "x", "domain": ".youtube.com"}]) is False
 
 
 def test_prune_chrome_profile_drops_metrics_keeps_login(tmp_path: Path):
@@ -143,6 +154,9 @@ def test_login_and_tv_url_helpers():
     assert not is_youtube_tv_url("https://www.youtube.com/watch?v=abc")
     assert is_youtube_tv_app_url("https://tv.youtube.com/")
     assert is_youtube_tv_app_url("https://tv.youtube.com/watch/abc")
+    assert is_youtube_tv_app_url("https://tv.youtube.com/?rd_rsn=lo&onboard=2")
+    assert not is_youtube_tv_app_url("https://tv.youtube.com/onboard")
+    assert not is_youtube_tv_app_url("https://tv.youtube.com/onboarding/")
     assert not is_youtube_tv_app_url("https://tv.youtube.com/welcome/?rd_rsn=lo")
     assert not is_youtube_tv_app_url("https://www.youtube.com/tv")
     assert is_youtube_tv_detour_url("https://www.youtube.com/tv")
@@ -359,7 +373,9 @@ async def test_keepalive_does_not_reload_app_tab(monkeypatch):
     async def fake_cdp(ws_url, method, params=None, *, timeout=15):
         calls.append(method)
         if method == "Runtime.evaluate":
-            assert "redirect:'follow'" in str((params or {}).get("expression") or "")
+            expression = str((params or {}).get("expression") or "")
+            assert "redirect:'manual'" in expression
+            assert "keepalive=1" not in expression
             assert "Page.navigate" not in calls
             return {"result": {"type": "object", "value": {"status": 200, "url": "https://tv.youtube.com/"}}}
         return {}
@@ -372,11 +388,12 @@ async def test_keepalive_does_not_reload_app_tab(monkeypatch):
     assert "Runtime.evaluate" in calls
 
 
-def test_keepalive_fetch_follows_redirects():
+def test_keepalive_fetch_does_not_follow_redirects():
     from yttv_epg.chrome import KEEPALIVE_FETCH
 
-    assert "redirect:'follow'" in KEEPALIVE_FETCH
-    assert "redirect:'manual'" not in KEEPALIVE_FETCH
+    assert "redirect:'manual'" in KEEPALIVE_FETCH
+    assert "redirect:'follow'" not in KEEPALIVE_FETCH
+    assert "keepalive=1" not in KEEPALIVE_FETCH
 
 
 def test_chrome_policy_allows_google_session_hosts():
@@ -389,3 +406,13 @@ def test_chrome_policy_allows_google_session_hosts():
     assert "wss://[*.]google.com" in allow
     assert "wss://[*.]youtube.com" in allow
     assert "wss://tv.youtube.com" in allow
+
+
+def test_chrome_startup_preserves_bound_sessions_and_restores_profile():
+    from pathlib import Path
+
+    entrypoint = (Path(__file__).resolve().parents[1] / "entrypoint.sh").read_text()
+    assert "DeviceBoundSessionCredentials" not in entrypoint
+    assert "BoundSessionCredentials" not in entrypoint
+    assert "--restore-last-session" in entrypoint
+    assert "wait_for_display" in entrypoint

@@ -53,7 +53,7 @@ Google blocks third-party YouTube TV OAuth, so the container runs Chromium on a 
 
 The desktop is also at `http://<host>:7900`. Do not expose port 7900 to the internet.
 
-After sign-in, the container keeps YouTube TV cookies only (`.youtube.com` / `tv.youtube.com`) and Chromium is allowlisted away from Gmail, Drive, and similar Google sites. Existing volumes drop leftover Google cookies on the next successful save or refresh.
+The encrypted app session keeps only YouTube cookies. Chromium retains the Google authentication cookies needed to renew that session, while its URL policy blocks Gmail, Drive, and similar sites. This is why a dedicated YouTube TV account is strongly recommended.
 
 Cookie paste remains available as a fallback. This service does not store your Google password.
 
