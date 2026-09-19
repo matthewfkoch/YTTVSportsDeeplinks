@@ -30,3 +30,23 @@ def test_event_for_ui_uses_product_logo_when_artwork_is_missing():
     payload = event_for_ui(event, tz=ZoneInfo("America/New_York"))
     assert payload["artwork"] == "/static/logo.png"
     assert payload["artwork_fallback"] is True
+    assert payload["artwork_secondary"] == ""
+
+
+def test_event_for_ui_keeps_team_logo_pair():
+    start = datetime(2026, 9, 5, 16, 0, tzinfo=timezone.utc)
+    event = Airing(
+        video_id="pennstate01",
+        title="Penn State at Temple",
+        station="ESPN2",
+        kind="event",
+        start=start,
+        end=start + timedelta(hours=3),
+        deeplink="https://tv.youtube.com/watch/pennstate01",
+        artwork="https://yt3.ggpht.com/PennStateLogo=w540-h540-p-ns-nd",
+        artwork_secondary="https://yt3.ggpht.com/TempleLogo=w540-h540-p-ns-nd",
+    )
+    payload = event_for_ui(event, tz=ZoneInfo("America/New_York"))
+    assert payload["artwork"] == event.artwork
+    assert payload["artwork_secondary"] == event.artwork_secondary
+    assert payload["artwork_fallback"] is False

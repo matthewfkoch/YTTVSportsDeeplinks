@@ -171,6 +171,7 @@ async def test_hub_401_aborts_client_and_tries_fallback(patched_pages, monkeypat
 def test_session_expired_message_detects_innertube_401():
     assert session_expired_message("YTTV session expired. Sign in again on tv.youtube.com.")
     assert session_expired_message("HTTP 401")
+    assert session_expired_message("Chromium session is not ready for guide requests.")
     assert not session_expired_message("HTTP 403")
     assert not session_expired_message("WEB_UNPLUGGED https://tv.youtube.com/youtubei/v1/browse returned HTTP 403")
     assert not session_expired_message("ESPN schedule timed out")

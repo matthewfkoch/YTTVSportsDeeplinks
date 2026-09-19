@@ -1,4 +1,6 @@
 {
+  "BrowserSignin": 0,
+  "SyncDisabled": true,
   "URLBlocklist": ["*"],
   "URLAllowlist": [
     "https://tv.youtube.com",

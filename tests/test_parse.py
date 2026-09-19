@@ -762,7 +762,8 @@ def test_square_network_logo_is_used_when_no_poster():
         }
     }
     airings = parse_browse(payload, fallback_minutes=60)
-    assert airings[0].artwork == "https://yt3.ggpht.com/NBCPeacockLogo=w960-h540-p-ns-nd"
+    assert airings[0].artwork == "https://yt3.ggpht.com/NBCPeacockLogo=w540-h540-p-ns-nd"
+    assert airings[0].artwork_secondary == ""
 
 
 def test_tiny_chip_icon_is_used_when_no_poster():
@@ -778,7 +779,7 @@ def test_tiny_chip_icon_is_used_when_no_poster():
         }
     }
     airings = parse_browse(payload, fallback_minutes=60)
-    assert airings[0].artwork == "https://yt3.ggpht.com/tinyNetworkIcon=w960-h540-p-ns-nd"
+    assert airings[0].artwork == "https://yt3.ggpht.com/tinyNetworkIcon=w540-h540-p-ns-nd"
 
 
 def test_nested_station_logo_does_not_replace_poster():
@@ -865,7 +866,46 @@ def test_game_card_team_images_become_artwork():
     }
     now = datetime(2026, 9, 9, 23, 0, tzinfo=timezone.utc)
     airings = parse_browse(payload, now=now, fallback_minutes=180)
-    assert airings[0].artwork == "https://yt3.ggpht.com/PennStateLogo=w960-h540-p-ns-nd"
+    assert airings[0].artwork == "https://yt3.ggpht.com/PennStateLogo=w540-h540-p-ns-nd"
+    assert airings[0].artwork_secondary == "https://yt3.ggpht.com/TempleLogo=w540-h540-p-ns-nd"
+
+
+def test_game_card_keeps_widescreen_poster_over_team_logos():
+    payload = {
+        "unpluggedGameCardRenderer": {
+            "header": {
+                "unpluggedGameCardMatchupHeaderRenderer": {
+                    "startTeamPrimaryText": {
+                        "accessibility": {"accessibilityData": {"label": "Penn State Nittany Lions football"}}
+                    },
+                    "endTeamPrimaryText": {
+                        "accessibility": {"accessibilityData": {"label": "Temple Owls football"}}
+                    },
+                    "startTeamPrimaryImage": {
+                        "thumbnails": [
+                            {"url": "//yt3.ggpht.com/PennStateLogo=ns-nd", "width": 720, "height": 720}
+                        ]
+                    },
+                    "endTeamPrimaryImage": {
+                        "thumbnails": [
+                            {"url": "//yt3.ggpht.com/TempleLogo=ns-nd", "width": 720, "height": 720}
+                        ]
+                    },
+                }
+            },
+            "thumbnail": {
+                "thumbnails": [
+                    {"url": "//yt3.ggpht.com/PennTemplePoster=ns-nd", "width": 1920, "height": 1080}
+                ]
+            },
+            "primaryText": {"runs": [{"text": "Sep 12 • ESPN2"}]},
+            "secondaryText": {"runs": [{"text": "NCAA Football"}]},
+        }
+    }
+    now = datetime(2026, 9, 9, 23, 0, tzinfo=timezone.utc)
+    airings = parse_browse(payload, now=now, fallback_minutes=180)
+    assert airings[0].artwork == "https://yt3.ggpht.com/PennTemplePoster=w960-h540-p-ns-nd"
+    assert airings[0].artwork_secondary == ""
 
 
 def test_row_station_icon_fills_airing_without_poster():
@@ -893,7 +933,7 @@ def test_row_station_icon_fills_airing_without_poster():
     }
     airings = parse_browse(payload, fallback_minutes=60)
     assert airings[0].station == "Universo"
-    assert airings[0].artwork == "https://yt3.ggpht.com/UniversoChip=w960-h540-p-ns-nd"
+    assert airings[0].artwork == "https://yt3.ggpht.com/UniversoChip=w540-h540-p-ns-nd"
 
 
 def test_row_does_not_copy_neighbor_poster():

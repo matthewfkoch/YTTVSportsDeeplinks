@@ -133,6 +133,10 @@ start_desktop() {
       fi
       prune_chrome_profile
       rm -f "$CHROME_PROFILE/SingletonLock" "$CHROME_PROFILE/SingletonSocket" "$CHROME_PROFILE/SingletonCookie"
+      start_url=""
+      if [ ! -f "$CHROME_PROFILE/Default/Preferences" ]; then
+        start_url="https://tv.youtube.com"
+      fi
       started=$(date +%s)
       "$CHROME_BIN" \
         --no-sandbox \
@@ -151,7 +155,7 @@ start_desktop() {
         --disable-breakpad \
         --disable-crash-reporter \
         --disable-metrics \
-        --disable-features=TranslateUI,PersistentHistograms \
+        --disable-features=TranslateUI,PersistentHistograms,DiceWebSignin,AccountConsistency,DeviceBoundSessions,BoundSessionCredentials \
         --disable-hang-monitor \
         --disable-popup-blocking \
         --disable-prompt-on-repost \
@@ -171,7 +175,7 @@ start_desktop() {
         --window-position=0,0 \
         --start-maximized \
         --restore-last-session \
-        https://tv.youtube.com >>/tmp/chromium.log 2>&1 &
+        ${start_url:+"$start_url"} >>/tmp/chromium.log 2>&1 &
       chrome_pid=$!
       echo "$chrome_pid" > "$CHROME_PID_FILE"
       chrome_status=0

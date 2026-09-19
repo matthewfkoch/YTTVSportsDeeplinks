@@ -155,6 +155,7 @@ def test_login_and_tv_url_helpers():
     assert is_youtube_tv_app_url("https://tv.youtube.com/")
     assert is_youtube_tv_app_url("https://tv.youtube.com/watch/abc")
     assert is_youtube_tv_app_url("https://tv.youtube.com/?rd_rsn=lo&onboard=2")
+    assert is_youtube_tv_app_url("https://tv.youtube.com/favorites?onboard=2")
     assert not is_youtube_tv_app_url("https://tv.youtube.com/onboard")
     assert not is_youtube_tv_app_url("https://tv.youtube.com/onboarding/")
     assert not is_youtube_tv_app_url("https://tv.youtube.com/welcome/?rd_rsn=lo")
@@ -218,7 +219,11 @@ async def test_keepalive_skips_google_login_tab(monkeypatch):
     async def fake_pages(http, base):
         return [{"url": "https://accounts.google.com/signin", "type": "page"}]
 
+    async def fake_cookies(http, cdp_url):
+        return []
+
     monkeypatch.setattr("yttv_epg.chrome._pages", fake_pages)
+    monkeypatch.setattr("yttv_epg.chrome.fetch_cookies", fake_cookies)
     result = await keepalive_youtube_tv(httpx.AsyncClient(), "http://127.0.0.1:9222")
     assert result["ok"] is True
     assert result["skipped"] == "login"
@@ -233,7 +238,11 @@ async def test_keepalive_skips_welcome_page(monkeypatch):
     async def fake_pages(http, base):
         return [{"url": "https://tv.youtube.com/welcome/?rd_rsn=lo", "type": "page"}]
 
+    async def fake_cookies(http, cdp_url):
+        return []
+
     monkeypatch.setattr("yttv_epg.chrome._pages", fake_pages)
+    monkeypatch.setattr("yttv_epg.chrome.fetch_cookies", fake_cookies)
     result = await keepalive_youtube_tv(httpx.AsyncClient(), "http://127.0.0.1:9222")
     assert result["skipped"] == "not_app"
 
@@ -354,46 +363,78 @@ async def test_innertube_post_refuses_welcome_tab(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_keepalive_does_not_reload_app_tab(monkeypatch):
+async def test_keepalive_reloads_app_tab_as_top_level_navigation(monkeypatch):
     import httpx
 
     from yttv_epg.chrome import keepalive_youtube_tv
 
-    calls: list[str] = []
+    calls: list[tuple[str, dict]] = []
+    marker_holder: dict[str, str] = {}
+    old_url = "https://tv.youtube.com/settings/subscriptions?fromsignin=1"
+    # The old document keeps answering until the navigation commits, then the
+    # tab bounces through accounts.google.com before landing back on the app.
+    probes = iter(
+        [
+            {"href": old_url, "marker": "OLD", "ready": "complete"},
+            {"href": "https://accounts.google.com/ServiceLogin?passive=true", "marker": None, "ready": "loading"},
+            {"href": "https://tv.youtube.com/", "marker": None, "ready": "interactive"},
+            {"href": "https://tv.youtube.com/", "marker": None, "ready": "complete"},
+            {"href": "https://tv.youtube.com/", "marker": None, "ready": "complete"},
+        ]
+    )
 
     async def fake_pages(http, base):
         return [
             {
-                "url": "https://tv.youtube.com/",
+                "url": old_url,
                 "type": "page",
                 "webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/page/1",
             }
         ]
 
     async def fake_cdp(ws_url, method, params=None, *, timeout=15):
-        calls.append(method)
-        if method == "Runtime.evaluate":
-            expression = str((params or {}).get("expression") or "")
-            assert "redirect:'manual'" in expression
-            assert "keepalive=1" not in expression
-            assert "Page.navigate" not in calls
-            return {"result": {"type": "object", "value": {"status": 200, "url": "https://tv.youtube.com/"}}}
+        calls.append((method, params or {}))
+        expression = str((params or {}).get("expression") or "")
+        if method == "Runtime.evaluate" and expression.startswith("window.__yttvKeepalive ="):
+            marker_holder["value"] = expression.split("=", 1)[1].strip().strip('"')
+            return {"result": {"type": "string", "value": marker_holder["value"]}}
+        if method == "Runtime.evaluate" and "location.href" in expression:
+            assert "Page.navigate" in [m for m, _ in calls], "probe before navigate"
+            probe = dict(next(probes))
+            if probe["marker"] == "OLD":
+                probe["marker"] = marker_holder["value"]
+            return {"result": {"type": "object", "value": probe}}
+        if method == "Runtime.evaluate" and "redirectCount" in expression:
+            return {"result": {"type": "object", "value": {"redirects": 2, "iframes": []}}}
         return {}
+
+    async def fake_cookies(http, cdp_url):
+        return []
 
     monkeypatch.setattr("yttv_epg.chrome._pages", fake_pages)
     monkeypatch.setattr("yttv_epg.chrome._cdp", fake_cdp)
+    monkeypatch.setattr("yttv_epg.chrome.fetch_cookies", fake_cookies)
+    monkeypatch.setattr("yttv_epg.chrome.asyncio.sleep", _noop_sleep)
     result = await keepalive_youtube_tv(httpx.AsyncClient(), "http://127.0.0.1:9222")
-    assert result["reloaded"] is False
-    assert "Page.navigate" not in calls
-    assert "Runtime.evaluate" in calls
+
+    methods = [method for method, _ in calls]
+    navigate = next(params for method, params in calls if method == "Page.navigate")
+    assert navigate == {"url": "https://tv.youtube.com"}
+    assert not any("fetch(" in str(params.get("expression")) for _, params in calls)
+    # Marker must be stamped on the old document before navigating.
+    assert methods.index("Page.navigate") > next(
+        i for i, (m, p) in enumerate(calls) if str(p.get("expression", "")).startswith("window.__yttvKeepalive")
+    )
+    assert result["reloaded"] is True
+    assert result["result"]["type"] == "navigation"
+    assert result["result"]["redirected"] is True
+    # Landed on the new document, not the stale old URL.
+    assert result["target"] == "https://tv.youtube.com/"
+    assert "Page.navigate" in methods
 
 
-def test_keepalive_fetch_does_not_follow_redirects():
-    from yttv_epg.chrome import KEEPALIVE_FETCH
-
-    assert "redirect:'manual'" in KEEPALIVE_FETCH
-    assert "redirect:'follow'" not in KEEPALIVE_FETCH
-    assert "keepalive=1" not in KEEPALIVE_FETCH
+async def _noop_sleep(_seconds):
+    return None
 
 
 def test_chrome_policy_allows_google_session_hosts():
@@ -402,17 +443,27 @@ def test_chrome_policy_allows_google_session_hosts():
 
     policy = json.loads((Path(__file__).resolve().parents[1] / "chromium-policy.json").read_text())
     allow = policy["URLAllowlist"]
+    assert policy["BrowserSignin"] == 0
+    assert policy["SyncDisabled"] is True
     assert "https://[*.]google.com" in allow
     assert "wss://[*.]google.com" in allow
     assert "wss://[*.]youtube.com" in allow
     assert "wss://tv.youtube.com" in allow
 
 
-def test_chrome_startup_preserves_bound_sessions_and_restores_profile():
+def test_chrome_startup_uses_stock_session_features_and_restores_profile():
     from pathlib import Path
 
     entrypoint = (Path(__file__).resolve().parents[1] / "entrypoint.sh").read_text()
-    assert "DeviceBoundSessionCredentials" not in entrypoint
-    assert "BoundSessionCredentials" not in entrypoint
+    disable = next(
+        line.strip()
+        for line in entrypoint.splitlines()
+        if line.strip().startswith("--disable-features=")
+    )
+    assert "--enable-features=" not in entrypoint
+    assert "DiceWebSignin" in disable
+    assert "AccountConsistency" in disable
+    assert "DeviceBoundSessions" in disable
+    assert "BoundSessionCredentials" in disable
     assert "--restore-last-session" in entrypoint
     assert "wait_for_display" in entrypoint

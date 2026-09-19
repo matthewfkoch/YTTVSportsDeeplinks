@@ -163,7 +163,7 @@
             >
               <td>{% if event.live %}<span class="live">LIVE</span> {% endif %}{{ event.clock }}</td>
               <td>{{ event.sport or "—" }}</td>
-              <td class="event-title"><img class="event-art{% if event.artwork_fallback %} fallback{% endif %}" src="{{ event.artwork }}" alt="" width="96" height="54" loading="lazy">{{ event.title }}</td>
+              <td class="event-title">{% if event.artwork_secondary %}<span class="event-art pair{% if event.artwork_fallback %} fallback{% endif %}"><img src="{{ event.artwork }}" alt="" loading="lazy"><img src="{{ event.artwork_secondary }}" alt="" loading="lazy"></span>{% else %}<img class="event-art{% if event.artwork_fallback %} fallback{% endif %}" src="{{ event.artwork }}" alt="" width="96" height="54" loading="lazy">{% endif %}{{ event.title }}</td>
               <td>{{ event.station or event.channel or "—" }}{% if event.channel and event.station and event.channel != event.station %}<div class="muted">{{ event.channel }}</div>{% endif %}</td>
               <td>
                 {% if event.deeplink %}

@@ -54,6 +54,7 @@ def event_for_ui(item: Airing, *, tz: ZoneInfo | None = None, now: datetime | No
     payload = item.to_dict()
     payload["artwork_fallback"] = not bool(item.artwork)
     payload["artwork"] = item.artwork or LOGO_PATH
+    payload["artwork_secondary"] = item.artwork_secondary
     payload["when"] = format_when(item.start, now=now, tz=zone)
     payload["clock"] = format_clock(item.start, tz=zone)
     payload["day"] = format_day_heading(item.start, now=now, tz=zone)

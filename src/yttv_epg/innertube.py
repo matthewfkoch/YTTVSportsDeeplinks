@@ -71,7 +71,11 @@ class MineError(RuntimeError):
 
 def session_expired_message(text: str | None) -> bool:
     lowered = (text or "").lower()
-    return "session expired" in lowered or "http 401" in lowered
+    return (
+        "session expired" in lowered
+        or "http 401" in lowered
+        or "chromium session is not ready for guide requests" in lowered
+    )
 
 
 def _session_expired(exc: Exception) -> bool:

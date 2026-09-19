@@ -108,6 +108,7 @@ class Airing:
     entity_id: str = ""
     channel: str = ""
     artwork: str = ""
+    artwork_secondary: str = ""
 
     def watch_id(self) -> str:
         return self.video_id if _ok_video_id(self.video_id) else ""
@@ -130,6 +131,7 @@ class Airing:
             "live": self.live,
             "source": self.source,
             "artwork": self.artwork,
+            "artwork_secondary": self.artwork_secondary,
         }
 
 
@@ -187,11 +189,20 @@ def _prefer_linear_simulcasts(airings: list[Airing]) -> list[Airing]:
             if kept_item.artwork:
                 filled.append(kept_item)
                 continue
-            art = next(
-                (item.artwork for item in group if item.artwork and _same_matchup_slot(kept_item, item)),
-                "",
+            donor = next(
+                (item for item in group if item.artwork and _same_matchup_slot(kept_item, item)),
+                None,
             )
-            filled.append(replace(kept_item, artwork=art) if art else kept_item)
+            if donor is None:
+                filled.append(kept_item)
+            else:
+                filled.append(
+                    replace(
+                        kept_item,
+                        artwork=donor.artwork,
+                        artwork_secondary=donor.artwork_secondary,
+                    )
+                )
         kept.extend(filled)
     return sorted(kept, key=lambda item: (item.start, item.title, item.video_id))
 
@@ -242,9 +253,18 @@ def _better_airing(candidate: Airing, current: Airing) -> bool:
 
 
 def keep_artwork(winner: Airing, other: Airing) -> Airing:
+    if is_poster_artwork(other.artwork) and not is_poster_artwork(winner.artwork):
+        return replace(winner, artwork=other.artwork, artwork_secondary="")
     if winner.artwork or not other.artwork:
+        if (
+            winner.artwork
+            and not winner.artwork_secondary
+            and other.artwork_secondary
+            and not is_poster_artwork(winner.artwork)
+        ):
+            return replace(winner, artwork_secondary=other.artwork_secondary)
         return winner
-    return replace(winner, artwork=other.artwork)
+    return replace(winner, artwork=other.artwork, artwork_secondary=other.artwork_secondary)
 
 
 @dataclass
@@ -259,6 +279,7 @@ class _WalkCtx:
     tab: str = ""
     entity_id: str = ""
     artwork: str = ""
+    artwork_secondary: str = ""
     artwork_score: int = 0
 
     def child(self, **kwargs: Any) -> _WalkCtx:
@@ -366,11 +387,11 @@ def _context_from_node(node: dict[str, Any], ctx: _WalkCtx) -> _WalkCtx:
         inferred = infer_sport(title, station)
         if inferred != "Other":
             sport = inferred
-    score, url = _best_artwork(node)
+    score, url, secondary = _choose_artwork(node)
     if url and score > ctx.artwork_score:
-        artwork, artwork_score = url, score
+        artwork, artwork_secondary, artwork_score = url, secondary, score
     else:
-        artwork, artwork_score = ctx.artwork, ctx.artwork_score
+        artwork, artwork_secondary, artwork_score = ctx.artwork, ctx.artwork_secondary, ctx.artwork_score
     return ctx.child(
         title=title,
         station=station,
@@ -379,6 +400,7 @@ def _context_from_node(node: dict[str, Any], ctx: _WalkCtx) -> _WalkCtx:
         live=live,
         sport=sport,
         artwork=artwork,
+        artwork_secondary=artwork_secondary,
         artwork_score=artwork_score,
     )
 
@@ -418,6 +440,7 @@ def _to_airing(
         entity_id=entity_id,
         channel=infer_channel(station, title),
         artwork=ctx.artwork,
+        artwork_secondary=ctx.artwork_secondary,
     )
 
 
@@ -463,11 +486,17 @@ def _airing_from_game_card(
     video_id = _video_id_from_watch(watch_ep) or _bare_video_id(card) or ""
     entity_id = _entity_id_from_node(card) or _game_card_entity(card)
     stored_id = video_id if _ok_video_id(video_id) else f"{title}|{station}|{int(_as_utc(start).timestamp())}"
-    score, url = _best_artwork(card)
+    score, url, secondary = _choose_artwork(card)
     if ctx.artwork and ctx.artwork_score >= score:
-        artwork, artwork_score = ctx.artwork, ctx.artwork_score
+        artwork, artwork_secondary, artwork_score = (
+            ctx.artwork,
+            ctx.artwork_secondary,
+            ctx.artwork_score,
+        )
     else:
-        artwork, artwork_score = url or ctx.artwork, score if url else ctx.artwork_score
+        artwork = url or ctx.artwork
+        artwork_secondary = secondary if url else ctx.artwork_secondary
+        artwork_score = score if url else ctx.artwork_score
     return _to_airing(
         stored_id,
         _WalkCtx(
@@ -480,6 +509,7 @@ def _airing_from_game_card(
             tab=ctx.tab,
             entity_id=entity_id,
             artwork=artwork,
+            artwork_secondary=artwork_secondary,
             artwork_score=artwork_score,
         ),
         now,
@@ -919,15 +949,67 @@ def _ok_video_id(value: Any) -> bool:
 
 
 def _best_artwork(node: dict[str, Any]) -> tuple[int, str]:
-    best: tuple[int, str] = (0, "")
+    score, url, _secondary = _choose_artwork(node)
+    return score, url
+
+
+def _choose_artwork(node: dict[str, Any]) -> tuple[int, str, str]:
+    best_score = 0
+    best_url = ""
     for item in _thumbnail_entries(node):
-        url = _normalize_artwork_url(item.get("url"))
+        width = _positive_int(item.get("width"))
+        height = _positive_int(item.get("height"))
+        score = _artwork_score(width, height)
+        url = _normalize_artwork_url(item.get("url"), score=score)
         if not url:
             continue
-        score = _artwork_score(_positive_int(item.get("width")), _positive_int(item.get("height")))
-        if score > best[0]:
-            best = (score, url)
-    return best
+        if score > best_score:
+            best_score, best_url = score, url
+    if best_score >= POSTER_ARTWORK_SCORE:
+        return best_score, best_url, ""
+    left, right = _team_primary_images(node)
+    if left and right:
+        pair_score = max(best_score, ICON_ARTWORK_SCORE + 1)
+        return pair_score, left, right
+    return best_score, best_url, ""
+
+
+def _team_primary_images(node: dict[str, Any]) -> tuple[str, str]:
+    start_url = ""
+    end_url = ""
+
+    def walk(value: Any, depth: int = 0) -> None:
+        nonlocal start_url, end_url
+        if depth > 8 or not isinstance(value, (dict, list)):
+            return
+        if isinstance(value, list):
+            for item in value:
+                walk(item, depth + 1)
+            return
+        start = value.get("startTeamPrimaryImage")
+        end = value.get("endTeamPrimaryImage")
+        if start is not None or end is not None:
+            if not start_url:
+                start_url = _image_url_from_value(start, score=ICON_ARTWORK_SCORE)
+            if not end_url:
+                end_url = _image_url_from_value(end, score=ICON_ARTWORK_SCORE)
+            if start_url and end_url:
+                return
+        for key, child in value.items():
+            if key in ARTWORK_SKIP_KEYS or _is_image_key(key):
+                continue
+            walk(child, depth + 1)
+
+    walk(node)
+    return start_url, end_url
+
+
+def _image_url_from_value(value: Any, *, score: int) -> str:
+    for item in _images_from_value(value):
+        url = _normalize_artwork_url(item.get("url"), score=score)
+        if url:
+            return url
+    return ""
 
 
 def _artwork_score(width: int, height: int) -> int:
@@ -936,6 +1018,17 @@ def _artwork_score(width: int, height: int) -> int:
     if width > 0:
         return width
     return ICON_ARTWORK_SCORE
+
+
+def is_poster_artwork(url: str) -> bool:
+    if not url:
+        return False
+    match = re.search(r"=w(\d+)-h(\d+)", url)
+    if not match:
+        return False
+    width = int(match.group(1))
+    height = int(match.group(2))
+    return width >= MIN_ARTWORK_WIDTH and width >= int(height * 1.2)
 
 
 def _is_image_key(key: str) -> bool:
@@ -994,7 +1087,7 @@ def _artwork_host_ok(host: str) -> bool:
     return any(token in lowered for token in ARTWORK_HOSTS)
 
 
-def _normalize_artwork_url(value: Any) -> str:
+def _normalize_artwork_url(value: Any, *, score: int = POSTER_ARTWORK_SCORE) -> str:
     if not isinstance(value, str):
         return ""
     text = value.strip()
@@ -1005,7 +1098,10 @@ def _normalize_artwork_url(value: Any) -> str:
     host = urlparse(text).netloc.lower()
     if not _artwork_host_ok(host):
         return ""
-    return sized_artwork_url(text, ARTWORK_WIDTH, ARTWORK_HEIGHT)
+    if score >= POSTER_ARTWORK_SCORE:
+        return sized_artwork_url(text, ARTWORK_WIDTH, ARTWORK_HEIGHT)
+    # Keep logos square so guide clients don't stretch a crest into 16:9.
+    return sized_artwork_url(text, ARTWORK_HEIGHT, ARTWORK_HEIGHT)
 
 
 def sized_artwork_url(url: str, width: int, height: int) -> str:
@@ -1021,6 +1117,15 @@ def sized_artwork_url(url: str, width: int, height: int) -> str:
     if not sep:
         base = text
     return f"{base}=w{width}-h{height}-p-ns-nd"
+
+
+def guide_artwork_url(url: str) -> str:
+    if not url:
+        return ""
+    if is_poster_artwork(url):
+        return sized_artwork_url(url, GUIDE_ARTWORK_WIDTH, GUIDE_ARTWORK_HEIGHT) or url
+    side = GUIDE_ARTWORK_HEIGHT
+    return sized_artwork_url(url, side, side) or url
 
 
 def _positive_int(value: Any) -> int:

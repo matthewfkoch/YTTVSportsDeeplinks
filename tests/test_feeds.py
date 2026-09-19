@@ -84,6 +84,25 @@ def test_xmltv_uses_product_logo_when_event_has_no_poster():
     ) in body
 
 
+def test_xmltv_keeps_square_logo_dimensions():
+    start = datetime(2026, 9, 4, 20, 0, tzinfo=timezone.utc)
+    game = Airing(
+        video_id="universo001",
+        title="Inter Milan at Udinese Calcio",
+        station="Universo",
+        kind="event",
+        start=start,
+        end=start + timedelta(hours=3),
+        deeplink="https://tv.youtube.com/watch/universo001",
+        artwork="https://yt3.ggpht.com/UniversoChip=w540-h540-p-ns-nd",
+    )
+    body = xmltv([LaneAssignment(lane=1, airing=game)], lane_count=1)
+    assert (
+        '<icon src="https://yt3.ggpht.com/UniversoChip=w540-h540-p-ns-nd" '
+        'width="540" height="540" />'
+    ) in body
+
+
 def test_apituner_export_is_separate_source():
     rows = apituner_export(
         base_url="http://yttvsportsdeeplinks:8095",

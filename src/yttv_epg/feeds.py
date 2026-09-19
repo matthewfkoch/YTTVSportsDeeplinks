@@ -9,7 +9,8 @@ from yttv_epg.parse import (
     Airing,
     GUIDE_ARTWORK_HEIGHT,
     GUIDE_ARTWORK_WIDTH,
-    sized_artwork_url,
+    guide_artwork_url,
+    is_poster_artwork,
 )
 
 
@@ -27,10 +28,7 @@ def logo_url(base_url: str) -> str:
 
 def programme_icon(airing: Airing, base_url: str = "") -> str:
     if airing.artwork:
-        return (
-            sized_artwork_url(airing.artwork, GUIDE_ARTWORK_WIDTH, GUIDE_ARTWORK_HEIGHT)
-            or airing.artwork
-        )
+        return guide_artwork_url(airing.artwork) or airing.artwork
     return logo_url(base_url) if base_url else ""
 
 
@@ -64,9 +62,12 @@ def xmltv(assignments: list[LaneAssignment], lane_count: int, *, base_url: str =
             lines.append(f"    <url>{escape(row.airing.deeplink)}</url>")
         icon_src = programme_icon(row.airing, base_url)
         if icon_src:
+            if not row.airing.artwork or is_poster_artwork(row.airing.artwork):
+                width, height = GUIDE_ARTWORK_WIDTH, GUIDE_ARTWORK_HEIGHT
+            else:
+                width = height = GUIDE_ARTWORK_HEIGHT
             lines.append(
-                f'    <icon src="{escape(icon_src)}" width="{GUIDE_ARTWORK_WIDTH}" '
-                f'height="{GUIDE_ARTWORK_HEIGHT}" />'
+                f'    <icon src="{escape(icon_src)}" width="{width}" height="{height}" />'
             )
         lines.append("  </programme>")
     lines.append("</tv>")

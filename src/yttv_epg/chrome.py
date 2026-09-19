@@ -19,13 +19,7 @@ YOUTUBE_TV = "https://tv.youtube.com"
 MAX_DISK_CACHE_BYTES = 256 * 1024 * 1024
 _PROFILE_JUNK_DIRS = ("BrowserMetrics", "Crashpad", "Crash Reports")
 _LOGIN_HOSTS = ("accounts.google.com", "accounts.youtube.com", "signin.google.com")
-KEEPALIVE_FETCH = (
-    "(async () => {"
-    " const res = await fetch(location.origin + '/',"
-    "  {credentials:'include', cache:'no-store', redirect:'manual'});"
-    " return {status: res.status, redirected: res.redirected, type: res.type, url: location.href};"
-    "})()"
-)
+KEEPALIVE_SETTLE_SECONDS = 30
 _FETCH_FORBIDDEN = {
     "accept-encoding",
     "access-control-request-headers",
@@ -283,7 +277,13 @@ async def open_youtube_tv(http: httpx.AsyncClient, cdp_url: str) -> dict[str, An
 
 
 async def keepalive_youtube_tv(http: httpx.AsyncClient, cdp_url: str) -> dict[str, Any]:
-    """Rotate Google login cookies without reloading the YouTube TV tab."""
+    """Reload the YouTube TV tab as a real top-level navigation.
+
+    Google rotates its session token through a redirect bounce via
+    accounts.google.com. That bounce only completes on a top-level
+    navigation; an idle tab issuing only XHRs never rotates and the
+    token expires server-side after roughly 12 hours.
+    """
     pages = await _pages(http, cdp_url.rstrip("/"))
     if any(is_google_login_url(page.get("url")) for page in pages):
         return {"ok": True, "skipped": "login"}
@@ -296,19 +296,66 @@ async def keepalive_youtube_tv(http: httpx.AsyncClient, cdp_url: str) -> dict[st
     ws = page.get("webSocketDebuggerUrl")
     if not ws:
         raise ChromeError("Chromium has no page to keep the YTTV login alive.")
-    result = await _cdp(
+    await _cdp(str(ws), "Page.enable")
+    marker = f"yttv-keepalive-{int(time.time() * 1000)}"
+    await _cdp(
         str(ws),
         "Runtime.evaluate",
-        {
-            "expression": KEEPALIVE_FETCH,
-            "awaitPromise": True,
-            "returnByValue": True,
-            "timeout": 20000,
-        },
-        timeout=25,
+        {"expression": f"window.__yttvKeepalive = {json.dumps(marker)}", "returnByValue": True},
+        timeout=5,
     )
-    value = _evaluate_value(result)
-    return {"ok": True, "target": page.get("url") or YOUTUBE_TV, "reloaded": False, "result": value}
+    await _cdp(str(ws), "Page.navigate", {"url": YOUTUBE_TV})
+    final_url, bounced = await _wait_keepalive_settled(str(ws), marker)
+    value: dict[str, Any] = {
+        "status": None,
+        "redirected": bounced,
+        "type": "navigation",
+        "url": final_url,
+    }
+    return {"ok": True, "target": final_url or YOUTUBE_TV, "reloaded": True, "result": value}
+
+
+_KEEPALIVE_PROBE = (
+    "({href: location.href, marker: window.__yttvKeepalive || null,"
+    " ready: document.readyState})"
+)
+
+
+async def _wait_keepalive_settled(ws_url: str, marker: str) -> tuple[str, bool]:
+    """Wait for a keepalive navigation to commit and land back on the app.
+
+    The old document still answers `location.href` until the new one commits,
+    so a marker stamped on the old document distinguishes them. A pass through
+    a Google login host is expected during token rotation, so it is recorded
+    rather than treated as a failure. The URL must hold steady for two polls
+    after load so a late script-driven bounce is not missed.
+    """
+    deadline = time.monotonic() + KEEPALIVE_SETTLE_SECONDS
+    bounced = False
+    url = ""
+    stable_polls = 0
+    while time.monotonic() < deadline:
+        result = await _cdp(
+            ws_url,
+            "Runtime.evaluate",
+            {"expression": _KEEPALIVE_PROBE, "returnByValue": True},
+            timeout=5,
+        )
+        probe = _evaluate_value(result)
+        probe = probe if isinstance(probe, dict) else {}
+        new_url = str(probe.get("href") or "")
+        committed = probe.get("marker") != marker
+        if is_google_login_url(new_url):
+            bounced = True
+        if committed and probe.get("ready") == "complete" and is_youtube_tv_app_url(new_url):
+            stable_polls = stable_polls + 1 if new_url == url else 1
+            if stable_polls >= 2:
+                return new_url, bounced
+        else:
+            stable_polls = 0
+        url = new_url
+        await asyncio.sleep(0.5)
+    return url, bounced
 
 
 async def innertube_post(
@@ -330,8 +377,10 @@ async def innertube_post(
     if not ws:
         raise ChromeError("Chromium has no tv.youtube.com tab for guide requests.")
     live_headers = dict(headers)
+    live_cookies: list[dict[str, str]] = []
     try:
-        auth = sapisidhash_header(await fetch_cookies(http, cdp_url))
+        live_cookies = await fetch_cookies(http, cdp_url)
+        auth = sapisidhash_header(live_cookies)
         if auth:
             live_headers["Authorization"] = auth
     except ChromeError:

@@ -74,9 +74,12 @@ def test_replace_persists_artwork(tmp_path: Path):
     start = datetime(2026, 9, 5, 16, 0, tzinfo=timezone.utc)
     game = _airing("UConn vs Maryland", start)
     game.artwork = "https://yt3.ggpht.com/UConnMarylandArt=w960-h540-p-ns-nd"
+    game.artwork_secondary = "https://yt3.ggpht.com/UnusedSecondary=w540-h540-p-ns-nd"
     catalog = Catalog(tmp_path / "catalog.sqlite")
     catalog.replace([game], pack_lanes([game], 2))
-    assert catalog.events()[0].artwork == game.artwork
+    stored = catalog.events()[0]
+    assert stored.artwork == game.artwork
+    assert stored.artwork_secondary == game.artwork_secondary
 
 
 def test_stored_volleyball_survives_school_name_football_guess(tmp_path: Path):

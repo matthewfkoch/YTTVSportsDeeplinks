@@ -225,7 +225,14 @@ def _session_view(
     if live:
         expired = False
     else:
-        expired = bool(signed_in and session_expired_message(last_error))
+        browser_not_live = bool(
+            signed_in
+            and getattr(state.session, "kind", None) == "browser"
+            and chrome.get("available")
+        )
+        expired = bool(
+            browser_not_live or (signed_in and session_expired_message(last_error))
+        )
     return {
         "signed_in": signed_in,
         "session_expired": expired,
@@ -353,7 +360,6 @@ async def refresh_catalog() -> dict[str, Any]:
     state.refreshing = True
     try:
         async with state.refresh_lock:
-            await _touch_chrome_login()
             await _sync_session_from_chrome()
             await _refresh_espn_listings()
             session = _ensure_session()
@@ -423,7 +429,6 @@ async def refresh_watch_ids() -> dict[str, Any]:
     state.refreshing = True
     try:
         async with state.refresh_lock:
-            await _touch_chrome_login()
             await _sync_session_from_chrome()
             espn_changed = await _refresh_espn_listings()
             session = _ensure_session()
@@ -480,7 +485,6 @@ async def refresh_loop() -> None:
             except Exception:
                 delay = 60
         elif settings.enable_chrome:
-            await _touch_chrome_login()
             await _sync_session_from_chrome()
             delay = 30
         else:
