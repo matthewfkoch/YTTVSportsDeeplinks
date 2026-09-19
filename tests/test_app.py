@@ -54,6 +54,8 @@ def test_dashboard_imports_cookies_not_a_password_or_oauth_form():
         whatson = client.get("/whatson/1")
         assert whatson.status_code == 200
         assert whatson.json() == {"ok": False, "lane": 1, "deeplink_url": None}
+        assert client.get("/docs").status_code == 404
+        assert client.get("/linear").status_code == 404
         chrome = client.get("/api/auth/chrome/status").json()
         assert chrome["available"] is False
         capture = client.post("/api/auth/chrome/capture")
@@ -345,8 +347,12 @@ def test_feeds_follow_request_host_when_public_base_is_localhost():
         playlist = client.get("/playlist.m3u").text
         assert "http://192.168.1.20:8095/whatson/1" in playlist
         assert 'tvg-logo="http://192.168.1.20:8095/static/logo.png"' in playlist
+        assert 'url-tvg="http://192.168.1.20:8095/xmltv.xml"' in playlist
+        assert 'x-tvg-url="http://192.168.1.20:8095/xmltv.xml"' in playlist
         xml = client.get("/xmltv.xml").text
         assert '<icon src="http://192.168.1.20:8095/static/logo.png" />' in xml
+        assert 'id="yttv-sports-1"' in xml
+        assert 'tvg-id="yttv-sports-1"' in playlist
         logo = client.get("/static/logo.png")
         assert logo.status_code == 200
         assert logo.headers["content-type"].startswith("image/")
@@ -410,8 +416,11 @@ async def test_light_refresh_resolves_watch_ids_and_skips_noop():
         state.catalog.replace([pending, linked], assignments)
         _set_lane_cache(assignments)
         before = state.catalog.meta().get("last_refresh")
-        with patch.object(state.innertube, "resolve_soon", new=AsyncMock(return_value=[resolved])):
+        with patch.object(state.innertube, "resolve_soon", new=AsyncMock(return_value=[resolved])), patch(
+            "yttv_epg.app._touch_chrome_login", new=AsyncMock()
+        ) as touch:
             result = await refresh_watch_ids()
+        touch.assert_not_called()
         assert result["resolved"] == 1
         assert result["changed"] is True
         by_title = {item.title: item for item in state.catalog.events()}
@@ -473,8 +482,12 @@ async def test_full_mine_drops_cancelled_event():
         state.catalog.replace([cancelled, kept], assignments)
         _set_lane_cache(assignments)
         mined = MineResult(airings=[kept], client="WEB_UNPLUGGED", browse_id="FEunplugged_epg", raw={})
-        with patch.object(state.innertube, "mine", new=AsyncMock(return_value=mined)):
+        with (
+            patch.object(state.innertube, "mine", new=AsyncMock(return_value=mined)),
+            patch("yttv_epg.app._touch_chrome_login", new=AsyncMock()) as touch,
+        ):
             await refresh_catalog()
+        touch.assert_awaited()
         titles = {item.title for item in state.catalog.events()}
         assert titles == {"UConn vs Maryland"}
         state.catalog.replace([], [])
@@ -536,7 +549,6 @@ def test_api_refresh_reports_still_signed_in_not_expired_when_chrome_live():
         try:
             with (
                 patch("yttv_epg.app.settings.enable_chrome", True),
-                patch("yttv_epg.app._touch_chrome_login", new=AsyncMock()),
                 patch("yttv_epg.app._sync_session_from_chrome", new=AsyncMock(return_value=True)),
                 patch("yttv_epg.app._refresh_espn_listings", new=AsyncMock(return_value=False)),
                 patch(

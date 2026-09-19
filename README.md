@@ -2,7 +2,9 @@
 
 YouTube TV sports guide with a watch link per game. Sign in once in the container browser, then use XMLTV / M3U / APITuner lanes.
 
-This is not YouTube on TV (`youtube.com/tv`). It is not part of APITuner.
+This is an unofficial, self-hosted tool. It is not affiliated with YouTube, Google, ESPN, or APITuner, and it is not YouTube on TV (`youtube.com/tv`). Google can change or block the in-container session at any time.
+
+Keep this on your LAN. The dashboard, XMLTV, M3U, and watch-link resolver listen on port 8095. Port 7900 is an unauthenticated login desktop (noVNC); do not publish it to the internet.
 
 The Compose project, image, container, and volume are `yttvsportsdeeplinks` / `yttvsportsdeeplinks-data`. If you already had a login in `yttv-espn-plus-data`, copy that volume before the first start or you will sign in again.
 
@@ -71,7 +73,7 @@ If `docker volume ls` shows a different old name, use that as `/from`.
 | URL | Use |
 | --- | --- |
 | `/xmltv.xml` | Sports guide (filtered). This is the Channels DVR XMLTV URL. Channel icons use `/static/logo.png`. |
-| `/playlist.m3u` | Virtual lanes (`YTTV Sports 1` …) |
+| `/playlist.m3u` | Virtual lanes (`YTTV Sports 1` …). `tvg-id` / `channel-id` match XMLTV channel ids; `url-tvg` points at `/xmltv.xml`. |
 | `/whatson/{n}` | Current event deeplink (`https://tv.youtube.com/watch/...`) |
 | `/api/export` | APITuner channel JSON |
 | `/events` | Raw sports event list |
@@ -96,7 +98,7 @@ Upcoming events often have no watch ID until they are close to air. Those stay o
 | `HIDDEN_CHANNELS` | Comma-separated channel families to hide on first run (`ESPN+,NBC Sports Extra`) |
 | `MAX_HUBS` | How many sports network hubs to mine (default 16) |
 | `EPG_PAGES` / `HUB_PAGES` | How far to paginate the linear grid and hub schedules |
-| `REFRESH_SECONDS` | How often to refresh ESPN labels and resolve missing watch links (default 60). If this is the only interval you set, full mines still use `FULL_MINE_SECONDS`. |
+| `REFRESH_SECONDS` | How often to refresh ESPN labels and resolve missing watch links (default 60). Compose passes this into the container. |
 | `FULL_MINE_SECONDS` | How often to re-mine the YouTube TV guide (default 300). Manual Refresh always does a full mine. |
 | `MINE_CONCURRENCY` | Max parallel InnerTube hub/resolve requests (default 4). Continuation pages stay serial. |
 | `ENABLE_CHROME` | Run in-container Chromium (default `1`) |
@@ -106,18 +108,22 @@ Upcoming events often have no watch ID until they are close to air. Those stay o
 
 ## Releases
 
-Tagged releases (`v*`) trigger `.github/workflows/release.yml`, which:
+Pushes and pull requests run `.github/workflows/ci.yml` (syntax check, pytest, Docker build). Tagged releases (`v*`) trigger `.github/workflows/release.yml`, which:
 
-1. Publishes a multi-arch image (`linux/amd64` + `linux/arm64`) to GitHub Container Registry: `ghcr.io/matthewfkoch/yttvsportsdeeplinks:<version>` and `:latest`
-2. Creates a GitHub Release on this private repo (visible to collaborators)
+1. Runs the same tests, then publishes a multi-arch image (`linux/amd64` + `linux/arm64`) to GitHub Container Registry: `ghcr.io/matthewfkoch/yttvsportsdeeplinks:<version>` and `:latest`
+2. Creates a GitHub Release with pull instructions
 
-The first GHCR package from a private repo is private. After the first successful tag, open **Packages → yttvsportsdeeplinks → Package settings**, link it to this repo, and set visibility to **Public** so `docker pull` works without a GitHub login.
+If the package is still private (the default when the repo started private), open **Packages → yttvsportsdeeplinks → Package settings**, link it to this repo, and set visibility to **Public** so `docker pull` works without a GitHub login.
 
 To cut a release, bump `src/yttv_epg/__init__.py` and `pyproject.toml`, then:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag vX.Y.Z
+git push origin vX.Y.Z
 ```
 
-A manual run of the Release workflow (no tag) publishes `:dev` only.
+A manual run of the Release workflow (no tag) publishes `:dev` only. Do not retag a version that already shipped.
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).

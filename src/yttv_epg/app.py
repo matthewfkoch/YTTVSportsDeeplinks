@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -71,7 +72,7 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
         if path == "/" or path.startswith("/api/auth") or path.startswith("/api/status") or path.startswith("/api/refresh") or path.startswith("/api/filters"):
             auth = request.headers.get("authorization", "")
             expected = _basic_header(settings.admin_user, settings.admin_password)
-            if auth != expected:
+            if not secrets.compare_digest(auth, expected):
                 return Response(
                     "Authentication required",
                     status_code=401,
@@ -136,6 +137,10 @@ def _set_lane_cache(assignments: list[LaneAssignment]) -> list[LaneAssignment]:
     return state.lane_assignments
 
 
+def _pack_visible(visible: list[Airing]) -> list[LaneAssignment]:
+    return pack_lanes(visible, settings.lane_count, previous=_labeled_assignments())
+
+
 def _store_lanes(
     assignments: list[LaneAssignment],
     *,
@@ -181,7 +186,7 @@ async def _refresh_espn_listings(force: bool = False) -> bool:
             state.catalog.update_sports(events)
             visible = _visible_events(events)
             _store_lanes(
-                pack_lanes(visible, settings.lane_count),
+                _pack_visible(visible),
                 visible_count=len(visible),
                 watchable_count=len(_watchable_events(events)),
             )
@@ -361,6 +366,7 @@ async def refresh_catalog() -> dict[str, Any]:
     try:
         async with state.refresh_lock:
             await _sync_session_from_chrome()
+            await _touch_chrome_login()
             await _refresh_espn_listings()
             session = _ensure_session()
             try:
@@ -376,7 +382,7 @@ async def refresh_catalog() -> dict[str, Any]:
             )
             visible = _visible_events(events)
             watchable = _watchable_events(events)
-            assignments = pack_lanes(visible, settings.lane_count)
+            assignments = _pack_visible(visible)
             linear_ignored = len(mined.airings) - len(events)
             state.catalog.replace(
                 events,
@@ -451,7 +457,7 @@ async def refresh_watch_ids() -> dict[str, Any]:
             if pairs or espn_changed:
                 visible = _visible_events()
                 _store_lanes(
-                    pack_lanes(visible, settings.lane_count),
+                    _pack_visible(visible),
                     visible_count=len(visible),
                     watchable_count=len(_watchable_events()),
                 )
@@ -500,7 +506,7 @@ async def lifespan(_app: FastAPI):
     state.catalog.ensure_hidden_channels(settings.hidden_channels_list)
     visible = _visible_events()
     _store_lanes(
-        pack_lanes(visible, settings.lane_count),
+        _pack_visible(visible),
         visible_count=len(visible),
         watchable_count=len(_watchable_events()),
     )
@@ -516,10 +522,20 @@ async def lifespan(_app: FastAPI):
         yield
     finally:
         task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
         await state.http.aclose()
 
 
-app = FastAPI(title=PRODUCT_NAME, lifespan=lifespan)
+app = FastAPI(
+    title=PRODUCT_NAME,
+    lifespan=lifespan,
+    docs_url="/docs" if settings.allow_debug else None,
+    redoc_url="/redoc" if settings.allow_debug else None,
+    openapi_url="/openapi.json" if settings.allow_debug else None,
+)
 app.add_middleware(AdminAuthMiddleware)
 app.mount("/static", StaticFiles(directory=str(ROOT / "static")), name="static")
 
@@ -703,7 +719,7 @@ async def set_filters(request: Request) -> dict[str, Any]:
     visible = _visible_events(None, hidden, hidden_channels)
     watchable = _watchable_events()
     _store_lanes(
-        pack_lanes(visible, settings.lane_count),
+        _pack_visible(visible),
         visible_count=len(visible),
         watchable_count=len(watchable),
     )
@@ -744,18 +760,6 @@ async def list_events(kind: str = Query("event")) -> dict[str, Any]:
             )
         ]
     return {"count": len(rows), "events": [item.to_dict() for item in rows]}
-
-
-@app.get("/linear")
-async def list_linear() -> dict[str, Any]:
-    rows = state.catalog.events(kind="linear")
-    return {
-        "count": len(rows),
-        "channels": [
-            {"name": item.station or item.title, "video_id": item.video_id, "deeplink": item.deeplink}
-            for item in rows
-        ],
-    }
 
 
 @app.get("/whatson/{lane}")

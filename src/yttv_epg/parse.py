@@ -937,20 +937,8 @@ def _bare_video_id(node: dict[str, Any]) -> Optional[str]:
     return str(direct) if _ok_video_id(direct) else None
 
 
-def _video_id_from_node(node: dict[str, Any]) -> Optional[str]:
-    found = _video_id_from_watch(_watch_endpoint_from_node(node))
-    if found:
-        return found
-    return _bare_video_id(node)
-
-
 def _ok_video_id(value: Any) -> bool:
     return isinstance(value, str) and bool(VIDEO_ID_RE.match(value))
-
-
-def _best_artwork(node: dict[str, Any]) -> tuple[int, str]:
-    score, url, _secondary = _choose_artwork(node)
-    return score, url
 
 
 def _choose_artwork(node: dict[str, Any]) -> tuple[int, str, str]:
@@ -1199,10 +1187,6 @@ def _station_from_secondary(secondary: str, node: dict[str, Any]) -> str:
             if cleaned:
                 return cleaned
     return ""
-
-
-def _looks_like_schedule(text: str) -> bool:
-    return is_unusable_channel_label(text)
 
 
 def _is_live(node: dict[str, Any]) -> bool:

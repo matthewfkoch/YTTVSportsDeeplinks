@@ -9,8 +9,8 @@ from typing import Any, Optional
 
 from yttv_epg.branding import for_ui
 from yttv_epg.lanes import LaneAssignment
-from yttv_epg.parse import Airing, keep_artwork, merge_airings
-from yttv_epg.sports import clean_station, infer_channel, resolve_sport, visible_events
+from yttv_epg.parse import Airing, keep_artwork
+from yttv_epg.sports import clean_station, infer_channel, resolve_sport
 
 
 def _better_row(candidate: Airing, current: Airing) -> bool:
@@ -304,14 +304,6 @@ class Catalog:
                 [item for item in channels if item not in {"Other", "Other extras"}],
             )
 
-    def filtered_events(self) -> list[Airing]:
-        return visible_events(
-            merge_airings(self.events(kind="event")),
-            self.hidden_sports(),
-            self.hidden_channels(),
-            require_watch_link=True,
-        )
-
     def meta(self) -> dict[str, str]:
         with self._lock:
             rows = self._conn.execute("SELECT key, value FROM meta").fetchall()
@@ -333,7 +325,8 @@ class Catalog:
                 """
                 SELECT l.lane, e.*
                 FROM lanes l
-                JOIN events e ON e.video_id = l.video_id AND e.start_ts = l.start_ts
+                JOIN events e ON e.video_id = l.video_id
+                    AND CAST(e.start_ts AS INTEGER) = CAST(l.start_ts AS INTEGER)
                 ORDER BY l.lane, e.start_ts
                 """
             ).fetchall()

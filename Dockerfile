@@ -23,7 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY chromium-policy.json /etc/chromium/policies/managed/yttv.json
-COPY pyproject.toml requirements.txt README.md ./
+COPY pyproject.toml requirements.txt README.md LICENSE ./
 COPY src ./src
 COPY entrypoint.sh /app/entrypoint.sh
 

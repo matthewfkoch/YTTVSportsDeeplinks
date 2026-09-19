@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
-from xml.sax.saxutils import escape
+from html import escape
+from xml.sax.saxutils import escape as xml_escape
 
 from yttv_epg.branding import LOGO_PATH, PRODUCT_NAME, SOURCE_NAME
 from yttv_epg.lanes import LaneAssignment
@@ -12,6 +14,8 @@ from yttv_epg.parse import (
     guide_artwork_url,
     is_poster_artwork,
 )
+
+ILLEGAL_XML_CHARS = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 
 def lane_id(lane: int) -> str:
@@ -35,31 +39,40 @@ def programme_icon(airing: Airing, base_url: str = "") -> str:
 def xmltv(assignments: list[LaneAssignment], lane_count: int, *, base_url: str = "") -> str:
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
-        f'<tv generator-info-name="{escape(PRODUCT_NAME)}">',
+        f'<tv generator-info-name="{_xml_attr(PRODUCT_NAME)}">',
     ]
     icon = logo_url(base_url) if base_url else ""
     for lane in range(1, lane_count + 1):
-        cid = escape(lane_id(lane))
+        cid = _xml_attr(lane_id(lane))
         lines.append(f'  <channel id="{cid}">')
-        lines.append(f"    <display-name>{escape(lane_name(lane))}</display-name>")
+        lines.append(f"    <display-name>{_xml_text(lane_name(lane))}</display-name>")
         if icon:
-            lines.append(f'    <icon src="{escape(icon)}" />')
+            lines.append(f'    <icon src="{_xml_attr(icon)}" />')
         lines.append("  </channel>")
-    for row in assignments:
-        if not row.airing.watch_id():
-            continue
+    programmes = [
+        row
+        for row in assignments
+        if 1 <= row.lane <= lane_count
+        and row.airing.watch_id()
+        and row.airing.end > row.airing.start
+    ]
+    programmes.sort(key=lambda row: (row.lane, row.airing.start, row.airing.title))
+    for row in programmes:
         start = _xmltv_time(row.airing.start)
         stop = _xmltv_time(row.airing.end)
-        cid = escape(lane_id(row.lane))
+        cid = _xml_attr(lane_id(row.lane))
         lines.append(f'  <programme start="{start}" stop="{stop}" channel="{cid}">')
-        lines.append(f"    <title>{escape(row.airing.title)}</title>")
+        lines.append(f"    <title>{_xml_text(row.airing.title)}</title>")
         if row.airing.station and row.airing.station != row.airing.title:
-            lines.append(f"    <sub-title>{escape(row.airing.station)}</sub-title>")
-        lines.append(f"    <category>{escape(row.airing.sport or 'Sports')}</category>")
+            lines.append(f"    <sub-title>{_xml_text(row.airing.station)}</sub-title>")
+        desc = _programme_desc(row.airing)
+        if desc:
+            lines.append(f"    <desc>{_xml_text(desc)}</desc>")
+        lines.append(f"    <category>{_xml_text(row.airing.sport or 'Sports')}</category>")
         if row.airing.channel:
-            lines.append(f"    <category>{escape(row.airing.channel)}</category>")
+            lines.append(f"    <category>{_xml_text(row.airing.channel)}</category>")
         if row.airing.deeplink:
-            lines.append(f"    <url>{escape(row.airing.deeplink)}</url>")
+            lines.append(f"    <url>{_xml_text(row.airing.deeplink)}</url>")
         icon_src = programme_icon(row.airing, base_url)
         if icon_src:
             if not row.airing.artwork or is_poster_artwork(row.airing.artwork):
@@ -67,7 +80,7 @@ def xmltv(assignments: list[LaneAssignment], lane_count: int, *, base_url: str =
             else:
                 width = height = GUIDE_ARTWORK_HEIGHT
             lines.append(
-                f'    <icon src="{escape(icon_src)}" width="{width}" height="{height}" />'
+                f'    <icon src="{_xml_attr(icon_src)}" width="{width}" height="{height}" />'
             )
         lines.append("  </programme>")
     lines.append("</tv>")
@@ -83,7 +96,8 @@ def m3u(
     alternate_package_name: str,
 ) -> str:
     root = base_url.rstrip("/")
-    lines = ["#EXTM3U"]
+    guide = f"{root}/xmltv.xml"
+    lines = [f'#EXTM3U url-tvg="{guide}" x-tvg-url="{guide}"']
     for lane in range(1, lane_count + 1):
         number = start_channel + lane - 1
         url = (
@@ -94,6 +108,7 @@ def m3u(
             f'#EXTINF:-1 tvg-id="{lane_id(lane)}" tvg-chno="{number}" '
             f'tvg-name="{lane_name(lane)}" tvg-logo="{logo_url(root)}" '
             f'channel-id="{lane_id(lane)}" '
+            f'group-title="YTTV Sports" '
             f'package-name="{package_name}" '
             f'alternate-package-name="{alternate_package_name}",'
             f"{lane_name(lane)}"
@@ -161,5 +176,28 @@ def whatson_payload(lane: int, airing: Airing | None) -> dict:
     return payload
 
 
+def _programme_desc(airing: Airing) -> str:
+    parts: list[str] = []
+    for value in (airing.station, airing.sport, airing.channel):
+        text = (value or "").strip()
+        if text and text not in parts and text != airing.title:
+            parts.append(text)
+    return " · ".join(parts)
+
+
 def _xmltv_time(value: datetime) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc).strftime("%Y%m%d%H%M%S +0000")
+
+
+def _xml_clean(value: str) -> str:
+    return ILLEGAL_XML_CHARS.sub("", (value or "").replace("\r\n", " ").replace("\n", " ").replace("\r", " "))
+
+
+def _xml_text(value: str) -> str:
+    return xml_escape(_xml_clean(value))
+
+
+def _xml_attr(value: str) -> str:
+    return escape(_xml_clean(value), quote=True)

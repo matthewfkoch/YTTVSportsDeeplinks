@@ -184,3 +184,24 @@ def test_replace_resolved_swaps_entity_pk(tmp_path: Path):
     assert rows[0].watch_id() == "abcdefghijk"
     assert rows[0].entity_id == "UCYcBS3Z_sOJFVZmq8E5DotQ"
 
+
+def test_assignments_round_trip_after_replace(tmp_path: Path):
+    start = datetime(2026, 9, 5, 16, 0, 0, 250000, tzinfo=timezone.utc)
+    game = _airing("UConn vs Maryland", start)
+    extra = Airing(
+        video_id="bj3v-DQPnNs",
+        title="Cowboys vs Giants",
+        station="ESPN",
+        kind="event",
+        start=start,
+        end=start + timedelta(hours=3),
+        deeplink="https://tv.youtube.com/watch/bj3v-DQPnNs",
+        sport="Football",
+        channel="ESPN",
+    )
+    catalog = Catalog(tmp_path / "catalog.sqlite")
+    packed = pack_lanes([game, extra], 4)
+    catalog.replace([game, extra], packed)
+    stored = {(row.lane, row.airing.video_id) for row in catalog.assignments()}
+    assert stored == {(row.lane, row.airing.video_id) for row in packed}
+

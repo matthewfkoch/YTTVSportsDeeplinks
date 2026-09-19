@@ -57,3 +57,28 @@ def test_pack_lanes_skips_events_without_watch_link():
     linked = _event("YGUvoKVT5qk", t0, 3, "UConn vs Maryland")
     rows = pack_lanes([upcoming, linked], lane_count=2)
     assert [row.airing.video_id for row in rows] == ["YGUvoKVT5qk"]
+
+
+def test_pack_fills_hole_before_later_live_event():
+    t0 = datetime(2026, 9, 4, 20, 0, tzinfo=timezone.utc)
+    live = _event("aaaaaaaaaaa", t0, 3, "Live Game")
+    live.live = True
+    earlier = _event("bbbbbbbbbbb", t0 - timedelta(hours=6), 2, "Afternoon")
+    earlier.live = False
+    rows = pack_lanes([live, earlier], lane_count=1)
+    assert {row.airing.title: row.lane for row in rows} == {"Live Game": 1, "Afternoon": 1}
+
+
+def test_pack_keeps_previous_lane_when_live_flag_changes():
+    t0 = datetime(2026, 9, 4, 16, 0, tzinfo=timezone.utc)
+    first = pack_lanes(
+        [_event("aaaaaaaaaaa", t0, 3, "Game A"), _event("bbbbbbbbbbb", t0, 3, "Game B")],
+        2,
+    )
+    later_a = _event("aaaaaaaaaaa", t0, 3, "Game A")
+    later_b = _event("bbbbbbbbbbb", t0, 3, "Game B")
+    later_b.live = True
+    second = pack_lanes([later_a, later_b], 2, previous=first)
+    assert {row.airing.video_id: row.lane for row in first} == {
+        row.airing.video_id: row.lane for row in second
+    }

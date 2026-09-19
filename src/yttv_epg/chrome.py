@@ -13,7 +13,7 @@ import httpx
 import websockets
 from websockets.exceptions import WebSocketException
 
-from yttv_epg.session import NEEDED_SID, is_youtube_cookie_domain, sapisidhash_header, youtube_tv_cookies
+from yttv_epg.session import NEEDED_SID, is_youtube_cookie_domain, sapisidhash_header
 
 YOUTUBE_TV = "https://tv.youtube.com"
 MAX_DISK_CACHE_BYTES = 256 * 1024 * 1024
@@ -427,34 +427,6 @@ async def innertube_post(
         return status, json.loads(raw)
     except json.JSONDecodeError:
         return status, None
-
-
-async def prune_non_youtube_cookies(
-    http: httpx.AsyncClient,
-    cdp_url: str,
-    cookies: list[dict[str, str]],
-) -> list[dict[str, str]]:
-    kept = youtube_tv_cookies(cookies)
-    dropped = non_youtube_cookies(cookies)
-    if not dropped:
-        return kept
-    try:
-        ws_url = await _browser_ws(http, cdp_url)
-    except ChromeError:
-        return kept
-    for cookie in dropped:
-        params: dict[str, str] = {"name": str(cookie.get("name") or "")}
-        domain = str(cookie.get("domain") or "")
-        path = str(cookie.get("path") or "")
-        if domain:
-            params["domain"] = domain
-        if path:
-            params["path"] = path
-        try:
-            await _cdp(ws_url, "Network.deleteCookies", params)
-        except ChromeError:
-            continue
-    return kept
 
 
 async def clear_browser_cookies(http: httpx.AsyncClient, cdp_url: str) -> None:
