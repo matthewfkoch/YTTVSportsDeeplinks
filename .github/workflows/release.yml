@@ -146,10 +146,11 @@ jobs:
 
             ```bash
             cp .env.example .env
+            docker compose pull
             docker compose up -d
             ```
 
-            Use `docker compose up -d --build` only when you want to build from local source.
+            `docker compose up -d` pulls `:latest` when this repo's Compose file is in use. Use `docker compose up -d --build --pull never` only when you want to build from local source.
 
       - name: Job summary
         if: always()

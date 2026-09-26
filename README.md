@@ -22,6 +22,7 @@ Or without Compose:
 
 ```bash
 docker run -d \
+  --pull always \
   --name yttvsportsdeeplinks \
   -p 8095:8095 \
   -p 7900:7900 \
@@ -31,13 +32,13 @@ docker run -d \
   ghcr.io/matthewfkoch/yttvsportsdeeplinks:latest
 ```
 
-`docker compose up -d` pulls `ghcr.io/matthewfkoch/yttvsportsdeeplinks:latest` by default.
+`docker compose up -d` pulls `ghcr.io/matthewfkoch/yttvsportsdeeplinks:latest` before it starts. `docker run` needs `--pull always`, or an image already on disk is reused.
 
 ### Build locally
 
 ```bash
 cp .env.example .env
-docker compose up -d --build
+docker compose up -d --build --pull never
 ```
 
 Set `PUBLIC_BASE_URL` if APITuner should always use a fixed host, for example `http://192.168.1.10:8095` or `http://yttvsportsdeeplinks:8095` on a shared Docker network. If you leave it as localhost, the dashboard, M3U, and export use the address you opened the page with.
@@ -48,7 +49,7 @@ Use a **dedicated YouTube TV Google account** for this container. Do not sign in
 
 Google blocks third-party YouTube TV OAuth, so the container runs Chromium on a virtual display (Xvfb). You sign in once in that window.
 
-1. Start the container (`docker compose up -d` for a release image, or `--build` for local source)
+1. Start the container (`docker compose pull && docker compose up -d` for a release image, or `docker compose up -d --build --pull never` for local source)
 2. Open `http://<host>:8095`
 3. In the login desktop, sign in to [tv.youtube.com](https://tv.youtube.com) with that dedicated YouTube TV account (account picker and 2FA stay in Google)
 4. The dashboard saves the session when it sees a YouTube TV login. The Chromium profile lives in the `yttvsportsdeeplinks-data` volume and is reused after restarts

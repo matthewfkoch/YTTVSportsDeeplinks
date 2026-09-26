@@ -2,8 +2,9 @@ name: yttvsportsdeeplinks
 
 services:
   yttvsportsdeeplinks:
-    # Pull a release by default. Use `docker compose up -d --build` to build locally.
+    # Always pull the published image. Local builds must pass --pull never.
     image: ghcr.io/matthewfkoch/yttvsportsdeeplinks:latest
+    pull_policy: always
     build: .
     container_name: yttvsportsdeeplinks
     ports:
