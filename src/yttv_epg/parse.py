@@ -154,9 +154,9 @@ def merge_airings(airings: Iterable[Airing]) -> list[Airing]:
         if prev is None:
             found[key] = airing
         elif _better_airing(airing, prev):
-            found[key] = keep_artwork(airing, prev)
+            found[key] = _keep_merged_fields(airing, prev)
         else:
-            found[key] = keep_artwork(prev, airing)
+            found[key] = _keep_merged_fields(prev, airing)
     return _prefer_linear_simulcasts(list(found.values()))
 
 
@@ -232,9 +232,17 @@ def _airing_key(airing: Airing) -> tuple[str, str, int]:
     return ("title", f"{airing.title}|{airing.station}", start)
 
 
+def _game_listing(airing: Airing) -> bool:
+    return airing.kind == "event" or is_matchup(airing.title)
+
+
 def _better_airing(candidate: Airing, current: Airing) -> bool:
     if bool(candidate.watch_id()) != bool(current.watch_id()):
         return bool(candidate.watch_id())
+    cand_game = _game_listing(candidate)
+    cur_game = _game_listing(current)
+    if cand_game != cur_game:
+        return cand_game
     cand_vp = "?vp=" in candidate.deeplink
     cur_vp = "?vp=" in current.deeplink
     if cand_vp != cur_vp:
@@ -250,6 +258,18 @@ def _better_airing(candidate: Airing, current: Airing) -> bool:
     if bool(candidate.artwork) != bool(current.artwork):
         return bool(candidate.artwork)
     return len(candidate.station) > len(current.station)
+
+
+def _keep_merged_fields(winner: Airing, other: Airing) -> Airing:
+    merged = keep_artwork(winner, other)
+    if (
+        "?vp=" not in merged.deeplink
+        and "?vp=" in other.deeplink
+        and merged.watch_id()
+        and merged.watch_id() == other.watch_id()
+    ):
+        merged = replace(merged, deeplink=other.deeplink)
+    return merged
 
 
 def keep_artwork(winner: Airing, other: Airing) -> Airing:

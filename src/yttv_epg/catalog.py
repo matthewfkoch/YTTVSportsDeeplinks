@@ -10,12 +10,16 @@ from typing import Any, Optional
 from yttv_epg.branding import for_ui
 from yttv_epg.lanes import LaneAssignment
 from yttv_epg.parse import Airing, keep_artwork
-from yttv_epg.sports import clean_station, infer_channel, resolve_sport
+from yttv_epg.sports import clean_station, infer_channel, is_matchup, resolve_sport
 
 
 def _better_row(candidate: Airing, current: Airing) -> bool:
     if bool(candidate.watch_id()) != bool(current.watch_id()):
         return bool(candidate.watch_id())
+    cand_game = candidate.kind == "event" or is_matchup(candidate.title)
+    cur_game = current.kind == "event" or is_matchup(current.title)
+    if cand_game != cur_game:
+        return cand_game
     if len(candidate.title) != len(current.title):
         return len(candidate.title) > len(current.title)
     if bool(candidate.station) != bool(current.station):

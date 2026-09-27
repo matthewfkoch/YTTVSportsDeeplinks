@@ -175,6 +175,40 @@ def test_linear_simulcast_beats_espn_plus():
     assert merged[0].station == "ABC 7"
 
 
+def test_matchup_beats_longer_single_team_shelf_title():
+    from yttv_epg.parse import Airing, merge_airings
+
+    start = datetime(2026, 9, 26, 22, 31, 26, tzinfo=timezone.utc)
+    end = datetime(2026, 9, 27, 2, 0, tzinfo=timezone.utc)
+    guide = Airing(
+        video_id="MVOtpYpMYbk",
+        title="Central Michigan at Miami",
+        station="CW Detroit 50",
+        kind="event",
+        start=start,
+        end=end,
+        deeplink="https://tv.youtube.com/watch/MVOtpYpMYbk",
+        channel="CW Detroit 50",
+        sport="Football",
+    )
+    shelf = Airing(
+        video_id="MVOtpYpMYbk",
+        title="Central Michigan Chippewas",
+        station="CW DETROIT 50",
+        kind="other",
+        start=start,
+        end=end,
+        deeplink="https://tv.youtube.com/watch/MVOtpYpMYbk?vp=0gEEEgIwAQ%3D%3D",
+        channel="CW DETROIT 50",
+    )
+    for rows in ([shelf, guide], [guide, shelf]):
+        merged = merge_airings(rows)
+        assert len(merged) == 1
+        assert merged[0].title == "Central Michigan at Miami"
+        assert merged[0].kind == "event"
+        assert merged[0].deeplink.endswith("?vp=0gEEEgIwAQ%3D%3D")
+
+
 def test_duplicate_video_and_start_keeps_longer_title():
     now = datetime(2026, 9, 5, 16, 0, tzinfo=timezone.utc)
     payload = {
