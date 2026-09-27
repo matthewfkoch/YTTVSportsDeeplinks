@@ -213,7 +213,12 @@ async def available(http: httpx.AsyncClient, cdp_url: str) -> bool:
     return response.status_code == 200
 
 
-async def fetch_cookies(http: httpx.AsyncClient, cdp_url: str) -> list[dict[str, str]]:
+async def fetch_cookies(
+    http: httpx.AsyncClient,
+    cdp_url: str,
+    *,
+    attach_pages: bool = True,
+) -> list[dict[str, str]]:
     errors: list[str] = []
     ws_url = await _browser_ws(http, cdp_url)
     for method in ("Network.getAllCookies", "Storage.getCookies"):
@@ -224,6 +229,10 @@ async def fetch_cookies(http: httpx.AsyncClient, cdp_url: str) -> list[dict[str,
             continue
         if cookies:
             return cookies
+    if not attach_pages:
+        raise ChromeError(
+            errors[-1] if errors else "Chromium has no cookies yet. Sign in on tv.youtube.com in the window below."
+        )
     for page in await _pages(http, cdp_url.rstrip("/")):
         ws = page.get("webSocketDebuggerUrl")
         if not ws:
@@ -442,7 +451,7 @@ async def status(http: httpx.AsyncClient, cdp_url: str) -> dict[str, Any]:
     if not await available(http, cdp_url):
         return {"available": False, "signed_in": False, "url": None}
     try:
-        cookies = await fetch_cookies(http, cdp_url)
+        cookies = await fetch_cookies(http, cdp_url, attach_pages=False)
         signed = chrome_signed_in(cookies)
     except ChromeError:
         cookies = []

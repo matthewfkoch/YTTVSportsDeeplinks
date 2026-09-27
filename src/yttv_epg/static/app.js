@@ -194,6 +194,8 @@ function isLiveYoutubeTvApp(status) {
 
 function dismissLoginDesktop() {
   const signedAuth = document.getElementById("signed-auth");
+  const frame = document.getElementById("desktop-frame");
+  if (frame) frame.removeAttribute("src");
   if (idleAuth) idleAuth.hidden = true;
   if (signedAuth) signedAuth.hidden = false;
   if (errorEl) errorEl.textContent = "";

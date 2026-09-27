@@ -56,7 +56,9 @@
             <a class="button-link" id="desktop-link" href="{{ novnc_url }}" target="_blank" rel="noopener">Open browser</a>
             <button id="capture-btn" class="secondary" type="button">Save session</button>
           </div>
+          {% if not signed_in or session_expired %}
           <iframe id="desktop-frame" class="desktop-frame" title="YTTV login" src="{{ novnc_url }}"></iframe>
+          {% endif %}
           <p class="muted" id="chrome-note">{% if session_expired %}Saved session expired. Sign in again here, then click Save session.{% else %}Waiting for you to finish signing in…{% endif %}</p>
         </div>
         {% endif %}
@@ -189,6 +191,6 @@
     <span class="toast-spinner" aria-hidden="true"></span>
     <span id="refresh-toast-text">Refreshing the guide…</span>
   </div>
-  <script src="/static/app.js?v=session-12"></script>
+  <script src="/static/app.js?v=session-13"></script>
 </body>
 </html>

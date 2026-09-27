@@ -70,6 +70,43 @@ def test_import_cookies_rejects_missing_sapisid():
         assert client.get("/health").json()["signed_in"] is False
 
 
+def test_signed_in_dashboard_does_not_connect_login_desktop():
+    from yttv_epg.app import state
+    from yttv_epg.session_store import SavedSession
+
+    with TestClient(app) as client:
+        state.session = SavedSession(
+            kind="browser",
+            cookies=[{"name": "SAPISID", "value": "x", "domain": ".youtube.com"}],
+        )
+        state.store.save(state.session)
+        state.catalog.clear_error()
+        try:
+            with (
+                patch("yttv_epg.app.settings.enable_chrome", True),
+                patch("yttv_epg.app._chrome_snapshot", new=AsyncMock(return_value={})),
+            ):
+                home = client.get("/")
+            assert home.status_code == 200
+            assert 'id="idle-auth" hidden' in home.text
+            assert "desktop-frame" not in home.text
+            assert "<iframe" not in home.text
+        finally:
+            client.post("/api/auth/logout")
+
+
+def test_signed_out_dashboard_embeds_login_desktop_when_chrome_enabled():
+    with TestClient(app) as client:
+        with (
+            patch("yttv_epg.app.settings.enable_chrome", True),
+            patch("yttv_epg.app._chrome_snapshot", new=AsyncMock(return_value={})),
+        ):
+            home = client.get("/")
+        assert home.status_code == 200
+        assert 'id="desktop-frame"' in home.text
+        assert "autoconnect=true" in home.text
+
+
 def test_import_cookies_saves_session():
     with TestClient(app) as client:
         with (

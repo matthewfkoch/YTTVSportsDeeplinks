@@ -211,6 +211,44 @@ def test_evaluate_value_unwraps_cdp_result():
 
 
 @pytest.mark.asyncio
+async def test_status_cookie_read_does_not_attach_to_page(monkeypatch):
+    import httpx
+
+    from yttv_epg.chrome import status
+
+    attached: list[str] = []
+
+    async def fake_available(http, cdp_url):
+        return True
+
+    async def fake_browser_ws(http, cdp_url):
+        return "ws://127.0.0.1:9222/devtools/browser/1"
+
+    async def fake_cdp(ws_url, method, params=None, *, timeout=15):
+        if "/devtools/page/" in ws_url:
+            attached.append(ws_url)
+        return {"cookies": []}
+
+    async def fake_pages(http, base):
+        return [
+            {
+                "url": "https://tv.youtube.com/watch/abc",
+                "type": "page",
+                "webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/page/1",
+            }
+        ]
+
+    monkeypatch.setattr("yttv_epg.chrome.available", fake_available)
+    monkeypatch.setattr("yttv_epg.chrome._browser_ws", fake_browser_ws)
+    monkeypatch.setattr("yttv_epg.chrome._cdp", fake_cdp)
+    monkeypatch.setattr("yttv_epg.chrome._pages", fake_pages)
+    result = await status(httpx.AsyncClient(), "http://127.0.0.1:9222")
+    assert result["available"] is True
+    assert result["on_app"] is True
+    assert attached == []
+
+
+@pytest.mark.asyncio
 async def test_keepalive_skips_google_login_tab(monkeypatch):
     import httpx
 
