@@ -91,7 +91,7 @@ ensure_display() {
     openbox >>/tmp/openbox.log 2>&1 &
     echo "$!" > "$OPENBOX_PID_FILE"
   fi
-  x11vnc -display "$DISPLAY" -forever -shared -nopw -listen 127.0.0.1 -rfbport "$VNC_PORT" -xkb -noxdamage >>/tmp/x11vnc.log 2>&1 &
+  x11vnc -display "$DISPLAY" -forever -shared -nopw -listen 127.0.0.1 -rfbport "$VNC_PORT" -xkb >>/tmp/x11vnc.log 2>&1 &
   echo "$!" > "$X11VNC_PID_FILE"
   return 0
 }
@@ -159,9 +159,7 @@ start_desktop() {
         --disable-hang-monitor \
         --disable-popup-blocking \
         --disable-prompt-on-repost \
-        --disable-backgrounding-occluded-windows \
-        --disable-renderer-backgrounding \
-        --memory-pressure-off \
+        --autoplay-policy=document-user-activation-required \
         --disk-cache-size=268435456 \
         --mute-audio \
         --password-store=basic \

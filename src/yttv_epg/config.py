@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     )
     enable_chrome: bool = Field(default=True, validation_alias="ENABLE_CHROME")
     chrome_profile: Optional[str] = Field(default=None, validation_alias="CHROME_PROFILE")
+    chrome_keepalive_seconds: int = Field(
+        default=14400,
+        validation_alias="CHROME_KEEPALIVE_SECONDS",
+    )
     espn_schedule: bool = Field(default=True, validation_alias="ESPN_SCHEDULE")
     cdp_url: str = Field(default="http://127.0.0.1:9222", validation_alias="CDP_URL")
     novnc_port: int = Field(default=7900, validation_alias="NOVNC_PORT")

@@ -154,6 +154,7 @@ def test_login_and_tv_url_helpers():
     assert not is_youtube_tv_url("https://www.youtube.com/watch?v=abc")
     assert is_youtube_tv_app_url("https://tv.youtube.com/")
     assert is_youtube_tv_app_url("https://tv.youtube.com/watch/abc")
+    assert is_youtube_tv_app_url("https://tv.youtube.com/robots.txt")
     assert is_youtube_tv_app_url("https://tv.youtube.com/?rd_rsn=lo&onboard=2")
     assert is_youtube_tv_app_url("https://tv.youtube.com/favorites?onboard=2")
     assert not is_youtube_tv_app_url("https://tv.youtube.com/onboard")
@@ -286,6 +287,92 @@ async def test_keepalive_skips_welcome_page(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_park_youtube_tv_navigates_to_lightweight_same_origin_page(monkeypatch):
+    import httpx
+
+    from yttv_epg.chrome import YOUTUBE_TV_PARKED, park_youtube_tv
+
+    calls: list[tuple[str, dict]] = []
+    probes = iter(
+        [
+            {"href": "https://tv.youtube.com/", "ready": "complete"},
+            {"href": YOUTUBE_TV_PARKED, "ready": "complete"},
+        ]
+    )
+
+    async def fake_pages(http, base):
+        return [
+            {
+                "url": "https://tv.youtube.com/",
+                "type": "page",
+                "webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/page/1",
+            }
+        ]
+
+    async def fake_cdp(ws_url, method, params=None, *, timeout=15):
+        calls.append((method, params or {}))
+        if method == "Runtime.evaluate":
+            return {"result": {"type": "object", "value": next(probes)}}
+        return {}
+
+    attached: list[bool] = []
+
+    async def fake_cookies(http, cdp_url, *, attach_pages=True):
+        attached.append(attach_pages)
+        return [
+            {"name": "SAPISID", "value": "x", "domain": ".youtube.com"},
+            {"name": "LOGIN_INFO", "value": "y", "domain": ".youtube.com"},
+        ]
+
+    monkeypatch.setattr("yttv_epg.chrome._pages", fake_pages)
+    monkeypatch.setattr("yttv_epg.chrome._cdp", fake_cdp)
+    monkeypatch.setattr("yttv_epg.chrome.fetch_cookies", fake_cookies)
+    monkeypatch.setattr("yttv_epg.chrome.asyncio.sleep", _noop_sleep)
+
+    result = await park_youtube_tv(httpx.AsyncClient(), "http://127.0.0.1:9222")
+
+    assert result == {"ok": True, "target": YOUTUBE_TV_PARKED, "parked": True}
+    assert ("Page.navigate", {"url": YOUTUBE_TV_PARKED}) in calls
+    assert attached == [False]
+
+
+@pytest.mark.asyncio
+async def test_park_youtube_tv_leaves_login_page_visible(monkeypatch):
+    import httpx
+
+    from yttv_epg.chrome import park_youtube_tv
+
+    async def fake_pages(http, base):
+        return [{"url": "https://accounts.google.com/signin", "type": "page"}]
+
+    monkeypatch.setattr("yttv_epg.chrome._pages", fake_pages)
+
+    result = await park_youtube_tv(httpx.AsyncClient(), "http://127.0.0.1:9222")
+
+    assert result == {"ok": True, "skipped": "login"}
+
+
+@pytest.mark.asyncio
+async def test_park_youtube_tv_leaves_signed_out_app_visible(monkeypatch):
+    import httpx
+
+    from yttv_epg.chrome import park_youtube_tv
+
+    async def fake_pages(http, base):
+        return [{"url": "https://tv.youtube.com/", "type": "page"}]
+
+    async def fake_cookies(http, cdp_url, *, attach_pages=True):
+        return []
+
+    monkeypatch.setattr("yttv_epg.chrome._pages", fake_pages)
+    monkeypatch.setattr("yttv_epg.chrome.fetch_cookies", fake_cookies)
+
+    result = await park_youtube_tv(httpx.AsyncClient(), "http://127.0.0.1:9222")
+
+    assert result == {"ok": True, "skipped": "signed_out"}
+
+
+@pytest.mark.asyncio
 async def test_open_youtube_tv_leaves_google_login_alone(monkeypatch):
     import httpx
 
@@ -401,6 +488,54 @@ async def test_innertube_post_refuses_welcome_tab(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_innertube_post_uses_parked_same_origin_page(monkeypatch):
+    import httpx
+
+    from yttv_epg.chrome import YOUTUBE_TV_PARKED, innertube_post
+
+    expressions: list[str] = []
+
+    async def fake_pages(http, base):
+        return [
+            {
+                "url": YOUTUBE_TV_PARKED,
+                "type": "page",
+                "webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/page/1",
+            }
+        ]
+
+    async def fake_cookies(http, cdp_url):
+        return [{"name": "SAPISID", "value": "x", "domain": ".youtube.com"}]
+
+    async def fake_cdp(ws_url, method, params=None, *, timeout=15):
+        if method == "Runtime.evaluate":
+            expressions.append(str((params or {}).get("expression") or ""))
+            return {
+                "result": {
+                    "type": "object",
+                    "value": {"status": 200, "body": '{"ok":true}'},
+                }
+            }
+        return {}
+
+    monkeypatch.setattr("yttv_epg.chrome._pages", fake_pages)
+    monkeypatch.setattr("yttv_epg.chrome.fetch_cookies", fake_cookies)
+    monkeypatch.setattr("yttv_epg.chrome._cdp", fake_cdp)
+
+    status, body = await innertube_post(
+        httpx.AsyncClient(),
+        "http://127.0.0.1:9222",
+        "https://tv.youtube.com/youtubei/v1/browse",
+        {},
+        {"browseId": "FEunplugged_epg"},
+    )
+
+    assert status == 200
+    assert body == {"ok": True}
+    assert any("fetch(" in expression for expression in expressions)
+
+
+@pytest.mark.asyncio
 async def test_keepalive_reloads_app_tab_as_top_level_navigation(monkeypatch):
     import httpx
 
@@ -505,3 +640,8 @@ def test_chrome_startup_uses_stock_session_features_and_restores_profile():
     assert "BoundSessionCredentials" in disable
     assert "--restore-last-session" in entrypoint
     assert "wait_for_display" in entrypoint
+    assert "-noxdamage" not in entrypoint
+    assert "--disable-backgrounding-occluded-windows" not in entrypoint
+    assert "--disable-renderer-backgrounding" not in entrypoint
+    assert "--memory-pressure-off" not in entrypoint
+    assert "--autoplay-policy=document-user-activation-required" in entrypoint

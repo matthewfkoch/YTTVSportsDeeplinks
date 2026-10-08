@@ -20,7 +20,7 @@ from yttv_epg.branding import EYEBROW, PRODUCT_NAME, for_ui
 from yttv_epg.catalog import Catalog
 from yttv_epg.chrome import ChromeError, available as chrome_available
 from yttv_epg.chrome import clear_browser_cookies, fetch_cookies
-from yttv_epg.chrome import innertube_post, keepalive_youtube_tv, open_youtube_tv
+from yttv_epg.chrome import innertube_post, keepalive_youtube_tv, open_youtube_tv, park_youtube_tv
 from yttv_epg.chrome import prune_chrome_profile, status as chrome_status
 from yttv_epg.config import settings
 from yttv_epg.display import format_refresh, group_events_for_ui, local_tz
@@ -59,6 +59,7 @@ class State:
         self.espn_fetched_at: Optional[datetime] = None
         self.lane_assignments: Optional[list[LaneAssignment]] = None
         self.last_full_mine_at: Optional[datetime] = None
+        self.last_chrome_keepalive_at: Optional[datetime] = None
 
 
 state = State()
@@ -253,14 +254,49 @@ async def _browser_innertube_post(
     return await innertube_post(state.http, settings.cdp_url, url, headers, payload)
 
 
-async def _touch_chrome_login() -> None:
+async def _touch_chrome_login(*, force: bool = False) -> bool:
+    if not settings.enable_chrome:
+        return False
+    now = datetime.now(timezone.utc)
+    if (
+        not force
+        and state.last_chrome_keepalive_at is not None
+        and (now - state.last_chrome_keepalive_at).total_seconds()
+        < max(settings.chrome_keepalive_seconds, 300)
+    ):
+        return False
+    try:
+        if await chrome_available(state.http, settings.cdp_url):
+            result = await keepalive_youtube_tv(state.http, settings.cdp_url)
+            if result.get("reloaded") or result.get("bounced"):
+                state.last_chrome_keepalive_at = now
+                return True
+    except (ChromeError, httpx.HTTPError, RuntimeError):
+        return False
+    return False
+
+
+async def _park_chrome() -> None:
     if not settings.enable_chrome:
         return
     try:
         if await chrome_available(state.http, settings.cdp_url):
-            await keepalive_youtube_tv(state.http, settings.cdp_url)
+            await park_youtube_tv(state.http, settings.cdp_url)
     except (ChromeError, httpx.HTTPError, RuntimeError):
         return
+
+
+async def _mine_with_chrome_recovery(session: SavedSession):
+    try:
+        return await state.innertube.mine(session, settings.fallback_duration_min)
+    except (ChromeError, MineError, httpx.HTTPError) as exc:
+        if session.kind != "browser" or not session_expired_message(str(exc)):
+            raise
+        if not await _touch_chrome_login(force=True):
+            raise
+        if not await _sync_session_from_chrome():
+            raise
+        return await state.innertube.mine(_ensure_session(), settings.fallback_duration_min)
 
 
 GUIDE_STILL_SIGNED_IN = "Guide refresh failed. YouTube TV is still signed in."
@@ -370,7 +406,7 @@ async def refresh_catalog() -> dict[str, Any]:
             await _refresh_espn_listings()
             session = _ensure_session()
             try:
-                mined = await state.innertube.mine(session, settings.fallback_duration_min)
+                mined = await _mine_with_chrome_recovery(session)
             except (ChromeError, MineError, httpx.HTTPError) as exc:
                 await _mark_refresh_failure(exc)
                 raise
@@ -411,6 +447,8 @@ async def refresh_catalog() -> dict[str, Any]:
                 "browse_id": mined.browse_id,
             }
     finally:
+        async with state.refresh_lock:
+            await _park_chrome()
         state.refresh_jobs = max(0, state.refresh_jobs - 1)
         state.refreshing = state.refresh_jobs > 0
 
@@ -675,6 +713,7 @@ async def auth_logout() -> dict[str, bool]:
         except (ChromeError, httpx.HTTPError, RuntimeError):
             pass
     state.session = None
+    state.last_chrome_keepalive_at = None
     state.store.clear()
     state.catalog.clear_error()
     state.innertube.set_browser_post(None)

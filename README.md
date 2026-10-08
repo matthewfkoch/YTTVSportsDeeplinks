@@ -101,6 +101,7 @@ Upcoming events often have no watch ID until they are close to air. Those stay o
 | `EPG_PAGES` / `HUB_PAGES` | How far to paginate the linear grid and hub schedules |
 | `REFRESH_SECONDS` | How often to refresh ESPN labels and resolve missing watch links (default 60). Compose passes this into the container. |
 | `FULL_MINE_SECONDS` | How often to re-mine the YouTube TV guide (default 300). Manual Refresh always does a full mine. |
+| `CHROME_KEEPALIVE_SECONDS` | How often to reload YouTube TV to renew the browser session (default 14400 / 4 hours). |
 | `MINE_CONCURRENCY` | Max parallel InnerTube hub/resolve requests (default 4). Continuation pages stay serial. |
 | `ENABLE_CHROME` | Run in-container Chromium (default `1`) |
 | `NOVNC_PUBLIC_URL` | Override the login-desktop iframe URL |

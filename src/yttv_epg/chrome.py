@@ -16,6 +16,7 @@ from websockets.exceptions import WebSocketException
 from yttv_epg.session import NEEDED_SID, is_youtube_cookie_domain, sapisidhash_header
 
 YOUTUBE_TV = "https://tv.youtube.com"
+YOUTUBE_TV_PARKED = "https://tv.youtube.com/robots.txt"
 MAX_DISK_CACHE_BYTES = 256 * 1024 * 1024
 _PROFILE_JUNK_DIRS = ("BrowserMetrics", "Crashpad", "Crash Reports")
 _LOGIN_HOSTS = ("accounts.google.com", "accounts.youtube.com", "signin.google.com")
@@ -322,6 +323,55 @@ async def keepalive_youtube_tv(http: httpx.AsyncClient, cdp_url: str) -> dict[st
         "url": final_url,
     }
     return {"ok": True, "target": final_url or YOUTUBE_TV, "reloaded": True, "result": value}
+
+
+async def park_youtube_tv(http: httpx.AsyncClient, cdp_url: str) -> dict[str, Any]:
+    """Leave Chromium on a lightweight same-origin document between guide requests."""
+    pages = await _pages(http, cdp_url.rstrip("/"))
+    if any(is_google_login_url(page.get("url")) for page in pages):
+        return {"ok": True, "skipped": "login"}
+    try:
+        cookies = await fetch_cookies(http, cdp_url, attach_pages=False)
+    except ChromeError:
+        return {"ok": True, "skipped": "signed_out"}
+    if not chrome_signed_in(cookies):
+        return {"ok": True, "skipped": "signed_out"}
+    page = next((item for item in pages if is_youtube_tv_app_url(item.get("url"))), None)
+    if page is None:
+        return {"ok": True, "skipped": "not_app"}
+    if str(page.get("url") or "").rstrip("/") == YOUTUBE_TV_PARKED:
+        return {"ok": True, "target": YOUTUBE_TV_PARKED, "parked": True}
+    ws = page.get("webSocketDebuggerUrl")
+    if not ws:
+        raise ChromeError("Chromium has no YouTube TV page to park.")
+    await _cdp(str(ws), "Page.enable")
+    await _cdp(str(ws), "Page.navigate", {"url": YOUTUBE_TV_PARKED})
+    target = await _wait_parked(str(ws))
+    return {"ok": True, "target": target, "parked": True}
+
+
+async def _wait_parked(ws_url: str, timeout: float = 10) -> str:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        result = await _cdp(
+            ws_url,
+            "Runtime.evaluate",
+            {
+                "expression": "({href: location.href, ready: document.readyState})",
+                "returnByValue": True,
+            },
+            timeout=5,
+        )
+        probe = _evaluate_value(result)
+        probe = probe if isinstance(probe, dict) else {}
+        url = str(probe.get("href") or "")
+        if url.rstrip("/") == YOUTUBE_TV_PARKED and probe.get("ready") in {
+            "interactive",
+            "complete",
+        }:
+            return url
+        await asyncio.sleep(0.1)
+    raise ChromeError("Chromium did not enter its low-power idle page.")
 
 
 _KEEPALIVE_PROBE = (

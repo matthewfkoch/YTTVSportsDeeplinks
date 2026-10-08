@@ -534,6 +534,63 @@ async def test_full_mine_drops_cancelled_event():
 
 
 @pytest.mark.asyncio
+async def test_chrome_keepalive_is_throttled_but_can_be_forced():
+    from datetime import datetime, timezone
+    from unittest.mock import AsyncMock, patch
+
+    from yttv_epg.app import _touch_chrome_login, state
+
+    state.last_chrome_keepalive_at = datetime.now(timezone.utc)
+    keepalive = AsyncMock(return_value={"ok": True, "reloaded": True})
+    try:
+        with (
+            patch("yttv_epg.app.settings.enable_chrome", True),
+            patch("yttv_epg.app.settings.chrome_keepalive_seconds", 14400),
+            patch("yttv_epg.app.chrome_available", new=AsyncMock(return_value=True)),
+            patch("yttv_epg.app.keepalive_youtube_tv", new=keepalive),
+        ):
+            assert await _touch_chrome_login() is False
+            keepalive.assert_not_awaited()
+            assert await _touch_chrome_login(force=True) is True
+            keepalive.assert_awaited_once()
+    finally:
+        state.last_chrome_keepalive_at = None
+
+
+@pytest.mark.asyncio
+async def test_browser_mine_renews_session_once_after_auth_failure():
+    from unittest.mock import AsyncMock, patch
+
+    from yttv_epg.app import _mine_with_chrome_recovery, state
+    from yttv_epg.innertube import MineError, MineResult
+    from yttv_epg.session_store import SavedSession
+
+    session = SavedSession(
+        kind="browser",
+        cookies=[{"name": "SAPISID", "value": "x", "domain": ".youtube.com"}],
+    )
+    mined = MineResult(airings=[], client="WEB_UNPLUGGED", browse_id="FEunplugged_epg", raw={})
+    mine = AsyncMock(
+        side_effect=[
+            MineError("YTTV session expired. Sign in again on tv.youtube.com."),
+            mined,
+        ]
+    )
+    state.session = session
+    try:
+        with (
+            patch.object(state.innertube, "mine", new=mine),
+            patch("yttv_epg.app._touch_chrome_login", new=AsyncMock(return_value=True)) as touch,
+            patch("yttv_epg.app._sync_session_from_chrome", new=AsyncMock(return_value=True)),
+        ):
+            assert await _mine_with_chrome_recovery(session) is mined
+        touch.assert_awaited_once_with(force=True)
+        assert mine.await_count == 2
+    finally:
+        state.session = None
+
+
+@pytest.mark.asyncio
 async def test_refresh_failure_does_not_wipe_chrome_cookies():
     from yttv_epg.app import _mark_refresh_failure, state
     from yttv_epg.innertube import MineError, session_expired_message
