@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from yttv_epg.parse import parse_browse
@@ -1007,3 +1007,39 @@ def test_row_does_not_copy_neighbor_poster():
     by_id = {item.video_id: item for item in airings}
     assert by_id["alabamakent"].artwork == "https://yt3.ggpht.com/AlabamaKentuckyArt=w960-h540-p-ns-nd"
     assert by_id["sportscent1"].artwork == ""
+
+
+def test_station_logo_is_separate_from_poster_and_inherited_only_for_same_station():
+    payload = {"epgRowRenderer": {
+        "station": {"epgStationRenderer": {"name": {"simpleText": "ESPN"},
+            "icon": {"thumbnails": [{"url": "https://yt3.ggpht.com/ESPN=ns-nd"}]}}},
+        "airings": [{"epgAiringRenderer": {
+            "title": {"simpleText": "Game One"},
+            "navigationEndpoint": {"watchEndpoint": {"videoId": "abcdefghijk"}},
+            "thumbnail": {"thumbnails": [{"url": "https://yt3.ggpht.com/Poster=ns-nd", "width": 960, "height": 540}]},
+        }}, {"epgAiringRenderer": {
+            "title": {"simpleText": "Game Two"}, "stationName": "FS2",
+            "navigationEndpoint": {"watchEndpoint": {"videoId": "lmnopqrstuv"}},
+            "thumbnail": {"thumbnails": [{"url": "https://yt3.ggpht.com/Team=ns-nd", "width": 200, "height": 200}]},
+        }}],
+    }}
+    events = {event.video_id: event for event in parse_browse(payload)}
+    assert "ESPN" in events["abcdefghijk"].station_logo
+    assert "Poster" in events["abcdefghijk"].artwork
+    assert events["abcdefghijk"].to_dict()["station_logo"] == events["abcdefghijk"].station_logo
+    assert events["lmnopqrstuv"].station_logo == ""
+
+
+def test_merge_station_logo_does_not_cross_broadcasters():
+    from dataclasses import replace
+    from yttv_epg.parse import Airing, keep_artwork, merge_airings
+
+    now = datetime(2026, 10, 20, tzinfo=timezone.utc)
+    winner = Airing("abcdefghijk", "Alabama at Kentucky", "ESPN", "event", now,
+                    now + timedelta(hours=3), "https://tv.youtube.com/watch/abcdefghijk")
+    donor = replace(winner, title="Game", station=" espn ", station_logo="https://example.com/espn.png")
+    assert keep_artwork(winner, donor).station_logo == donor.station_logo
+    assert merge_airings([winner, donor])[0].station_logo == donor.station_logo
+    foreign = replace(donor, station="ESPN2")
+    assert keep_artwork(winner, foreign).station_logo == ""
+    assert merge_airings([winner, foreign])[0].station_logo == ""

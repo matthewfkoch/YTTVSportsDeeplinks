@@ -16,6 +16,7 @@ from yttv_epg.parse import (
     discover_event_hubs,
     discover_sports_chips,
     keep_hub_tab,
+    keep_station_logo,
     merge_airings,
     parse_browse,
     watch_deeplink,
@@ -432,6 +433,7 @@ class InnerTubeClient:
                 sport=airing.sport or found.sport,
                 channel=airing.channel or found.channel,
                 artwork=airing.artwork or found.artwork,
+                station_logo=keep_station_logo(airing, found).station_logo,
             )
         return airing
 

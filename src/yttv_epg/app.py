@@ -31,6 +31,7 @@ from yttv_epg.lanes import LaneAssignment, pack_lanes, whatson
 from yttv_epg.parse import Airing, merge_airings
 from yttv_epg.session import CookieError, parse_cookie_text, require_youtube_tv_cookies
 from yttv_epg.session_store import SavedSession, SessionStore
+from yttv_epg.station_logos import load_station_logos
 from yttv_epg.sports import (
     channel_counts,
     is_non_sports_station,
@@ -58,6 +59,7 @@ class State:
         self.espn_listings: list = []
         self.espn_fetched_at: Optional[datetime] = None
         self.lane_assignments: Optional[list[LaneAssignment]] = None
+        self.station_logos: dict[str, str] = {}
         self.last_full_mine_at: Optional[datetime] = None
         self.last_chrome_keepalive_at: Optional[datetime] = None
 
@@ -538,6 +540,7 @@ async def refresh_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    state.station_logos = load_station_logos(settings.station_logos_file)
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     prune_chrome_profile(settings.chrome_profile_dir, cap_cache=True)
     state.catalog.ensure_hidden_sports(settings.hidden_sports_list)
@@ -831,6 +834,9 @@ async def xmltv_feed(request: Request) -> Response:
         _labeled_assignments(),
         settings.lane_count,
         base_url=_public_base_url(request),
+        now=datetime.now(timezone.utc),
+        include_subtitle=settings.xmltv_include_subtitle,
+        station_logos=state.station_logos,
     )
     return Response(content=body, media_type="application/xml")
 
@@ -843,6 +849,9 @@ async def playlist(request: Request) -> PlainTextResponse:
         start_channel=settings.start_channel,
         package_name=settings.package_name,
         alternate_package_name=settings.alternate_package_name,
+        assignments=_labeled_assignments(),
+        now=datetime.now(timezone.utc),
+        station_logos=state.station_logos,
     )
     return PlainTextResponse(body, media_type="application/x-mpegurl")
 

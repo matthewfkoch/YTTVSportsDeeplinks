@@ -205,3 +205,33 @@ def test_assignments_round_trip_after_replace(tmp_path: Path):
     stored = {(row.lane, row.airing.video_id) for row in catalog.assignments()}
     assert stored == {(row.lane, row.airing.video_id) for row in packed}
 
+
+
+def test_station_logo_migrates_and_round_trips(tmp_path):
+    import sqlite3
+    from dataclasses import replace
+
+    path = tmp_path / "catalog.sqlite"
+    original = Catalog(path)
+    now = datetime(2026, 10, 20, tzinfo=timezone.utc)
+    game = _airing("Alabama at Kentucky", now)
+    original.replace([game], pack_lanes([game], 1))
+    original._conn.close()
+    # Reproduce a pre-v0.2.5 schema while retaining its event and lane data.
+    with sqlite3.connect(path) as conn:
+        conn.execute("ALTER TABLE events DROP COLUMN station_logo")
+    catalog = Catalog(path)
+    assert catalog.events()[0].station_logo == ""
+    assert catalog.assignments()[0].airing.station_logo == ""
+    logo = "https://example.com/espn.png"
+    with_logo = replace(game, station_logo=logo)
+    catalog.replace([with_logo, game], pack_lanes([with_logo], 1))
+    assert catalog.events()[0].station_logo == logo
+    assert catalog.assignments()[0].airing.station_logo == logo
+    resolved = replace(with_logo, video_id="abcdefghijk")
+    catalog.replace_resolved([(with_logo, resolved)])
+    assert catalog.events()[0].station_logo == logo
+    catalog._conn.close()
+    reopened = Catalog(path)
+    assert reopened.events()[0].station_logo == logo
+    reopened._conn.close()

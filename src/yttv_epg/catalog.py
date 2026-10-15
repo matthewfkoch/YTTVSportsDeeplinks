@@ -86,6 +86,8 @@ class Catalog:
             self._conn.execute(
                 "ALTER TABLE events ADD COLUMN artwork_secondary TEXT NOT NULL DEFAULT ''"
             )
+        if "station_logo" not in cols:
+            self._conn.execute("ALTER TABLE events ADD COLUMN station_logo TEXT NOT NULL DEFAULT ''")
         self._conn.commit()
 
     def replace(
@@ -144,8 +146,8 @@ class Catalog:
         try:
             cur.executemany(
                 """
-                INSERT INTO events(video_id, title, station, kind, start_ts, end_ts, deeplink, live, source, sport, entity_id, channel, artwork, artwork_secondary)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO events(video_id, title, station, kind, start_ts, end_ts, deeplink, live, source, sport, entity_id, channel, artwork, artwork_secondary, station_logo)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(video_id, start_ts) DO UPDATE SET
                     title = excluded.title,
                     station = excluded.station,
@@ -158,7 +160,8 @@ class Catalog:
                     entity_id = excluded.entity_id,
                     channel = excluded.channel,
                     artwork = excluded.artwork,
-                    artwork_secondary = excluded.artwork_secondary
+                    artwork_secondary = excluded.artwork_secondary,
+                    station_logo = excluded.station_logo
                 """,
                 [
                     self._row_values(item)
@@ -230,8 +233,8 @@ class Catalog:
                 )
                 cur.execute(
                     """
-                    INSERT INTO events(video_id, title, station, kind, start_ts, end_ts, deeplink, live, source, sport, entity_id, channel, artwork, artwork_secondary)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO events(video_id, title, station, kind, start_ts, end_ts, deeplink, live, source, sport, entity_id, channel, artwork, artwork_secondary, station_logo)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(video_id, start_ts) DO UPDATE SET
                         title = excluded.title,
                         station = excluded.station,
@@ -244,7 +247,8 @@ class Catalog:
                         entity_id = excluded.entity_id,
                         channel = excluded.channel,
                         artwork = excluded.artwork,
-                        artwork_secondary = excluded.artwork_secondary
+                        artwork_secondary = excluded.artwork_secondary,
+                        station_logo = excluded.station_logo
                     """,
                     self._row_values(resolved),
                 )
@@ -395,6 +399,7 @@ class Catalog:
             item.channel or infer_channel(item.station, item.title),
             item.artwork,
             item.artwork_secondary,
+            item.station_logo,
         )
 
     def _row_to_airing(self, row: sqlite3.Row) -> Airing:
@@ -418,4 +423,5 @@ class Catalog:
             channel=infer_channel(station, title),
             artwork=str(row["artwork"]) if "artwork" in keys else "",
             artwork_secondary=str(row["artwork_secondary"]) if "artwork_secondary" in keys else "",
+            station_logo=str(row["station_logo"]) if "station_logo" in keys else "",
         )

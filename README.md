@@ -73,7 +73,7 @@ If `docker volume ls` shows a different old name, use that as `/from`.
 
 | URL | Use |
 | --- | --- |
-| `/xmltv.xml` | Sports guide (filtered). This is the Channels DVR XMLTV URL. Channel icons use `/static/logo.png`. |
+| `/xmltv.xml` | Sports guide (filtered). This is the Channels DVR XMLTV URL. Channel icons follow the lane broadcaster, with `/static/logo.png` as fallback. |
 | `/playlist.m3u` | Virtual lanes (`YTTV Sports 1` …). `tvg-id` / `channel-id` match XMLTV channel ids; `url-tvg` points at `/xmltv.xml`. |
 | `/whatson/{n}` | Current event deeplink (`https://tv.youtube.com/watch/...`) |
 | `/api/export` | APITuner channel JSON |
@@ -95,6 +95,8 @@ Upcoming events often have no watch ID until they are close to air. Those stay o
 | `PUBLIC_BASE_URL` | Host written into M3U / APITuner export. Loopback defaults follow the request host. |
 | `LANE_COUNT` | Virtual channels (default 128). Raise this if overlapping events are dropped. |
 | `START_CHANNEL` | First export number (default 9100) |
+| `XMLTV_INCLUDE_SUBTITLE` | Include the network name as a programme subtitle (default `false`). The network remains in the description. |
+| `STATION_LOGOS_FILE` | Optional station-to-logo JSON file inside the container (default `/data/station-logos.json`). Restart after changes. |
 | `HIDDEN_SPORTS` | Comma-separated sports to hide on first run (`Volleyball,Field Hockey`) |
 | `HIDDEN_CHANNELS` | Comma-separated channel families to hide on first run (`ESPN+,NBC Sports Extra`) |
 | `MAX_HUBS` | How many sports network hubs to mine (default 16) |
@@ -129,3 +131,43 @@ A manual run of the Release workflow (no tag) publishes `:dev` only. Do not reta
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE).
+
+## Channels DVR guide metadata
+
+Current and upcoming programmes include Sports, Live, and New metadata. Completed
+programmes remain in XMLTV, but Live and New are omitted once their scheduled end
+passes. This uses guide times, not final-score detection, and does not classify replays.
+Channels must refresh its guide to receive updated flags.
+
+Network names are omitted from XMLTV subtitles by default so clients such as Android
+can display the game title. Set `XMLTV_INCLUDE_SUBTITLE=true` to restore network
+subtitles. The network is always included in the programme description.
+
+M3U `tvg-logo` and XMLTV channel icons use the current event's broadcaster, or the
+next watchable event's broadcaster during a gap. Logo priority is: user override,
+the selected event's station metadata, another known logo for the same station,
+then the generic project logo. Event thumbnails remain separate. Refresh both the
+M3U source and XMLTV guide in Channels after updating; cached logos may not change
+immediately. An empty lane uses the generic logo.
+
+Optional overrides are a JSON object of station names to HTTP(S) image URLs:
+
+```json
+{
+  "ESPN": "https://your-image-host.example/espn.png",
+  "NFL Network": "https://your-image-host.example/nfl-network.png"
+}
+```
+
+Save this as `station-logos.json` and copy it into the persistent data volume:
+
+```sh
+docker cp station-logos.json yttvsportsdeeplinks:/data/station-logos.json
+docker compose restart
+```
+
+Station matching ignores case and extra whitespace; ESPN/ESPN2 and FS1/FS2 remain
+separate. A missing file uses automatic logos. Malformed files or invalid entries
+log a warning and fall back to automatic logos for the affected stations. URLs must
+be reachable by Channels DVR. Changing `STATION_LOGOS_FILE` in `.env` requires
+`docker compose up -d` to recreate the container with the new setting.

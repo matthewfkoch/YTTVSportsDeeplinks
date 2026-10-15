@@ -390,3 +390,24 @@ async def test_browser_post_401_does_not_send_stale_cookies_over_httpx(patched_p
     with pytest.raises(MineError, match="session expired"):
         await innertube.mine(SESSION)
     assert http_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("station,expected", [("ESPN", True), ("ESPN2", False)])
+async def test_watch_resolution_preserves_only_matching_station_logo(station, expected):
+    from unittest.mock import AsyncMock
+
+    now = datetime(2026, 10, 20, tzinfo=timezone.utc)
+    pending = Airing("", "Game", "ESPN", "event", now, now + timedelta(hours=3), "",
+                     entity_id="UCabcdefghijklmnopqrstuv")
+    payload = _card("abcdefghijk", "Game", station)
+    payload["unpluggedVideoRenderer"]["station"] = {"epgStationRenderer": {
+        "name": {"simpleText": station},
+        "icon": {"thumbnails": [{"url": "https://yt3.ggpht.com/Network=ns-nd"}]},
+    }}
+    async with httpx.AsyncClient() as http:
+        client = InnerTubeClient(http)
+        client._browse = AsyncMock(return_value=payload)
+        resolved = await client.resolve_watch(SESSION, CLIENTS[0], pending)
+    assert resolved.watch_id() == "abcdefghijk"
+    assert bool(resolved.station_logo) == expected

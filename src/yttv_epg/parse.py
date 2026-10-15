@@ -7,6 +7,7 @@ from typing import Any, Iterable, Optional
 from urllib.parse import quote, urlparse
 from zoneinfo import ZoneInfo
 
+from yttv_epg.station_logos import station_key
 from yttv_epg.sports import (
     clean_station,
     infer_channel,
@@ -109,6 +110,7 @@ class Airing:
     channel: str = ""
     artwork: str = ""
     artwork_secondary: str = ""
+    station_logo: str = ""
 
     def watch_id(self) -> str:
         return self.video_id if _ok_video_id(self.video_id) else ""
@@ -132,6 +134,7 @@ class Airing:
             "source": self.source,
             "artwork": self.artwork,
             "artwork_secondary": self.artwork_secondary,
+            "station_logo": self.station_logo,
         }
 
 
@@ -186,6 +189,8 @@ def _prefer_linear_simulcasts(airings: list[Airing]) -> list[Airing]:
             group_kept.append(item)
         filled: list[Airing] = []
         for kept_item in group_kept:
+            for donor in group:
+                kept_item = keep_station_logo(kept_item, donor)
             if kept_item.artwork:
                 filled.append(kept_item)
                 continue
@@ -272,7 +277,18 @@ def _keep_merged_fields(winner: Airing, other: Airing) -> Airing:
     return merged
 
 
+def keep_station_logo(winner: Airing, other: Airing) -> Airing:
+    if (
+        not winner.station_logo and other.station_logo
+        and station_key(winner.station)
+        and station_key(winner.station) == station_key(other.station)
+    ):
+        return replace(winner, station_logo=other.station_logo)
+    return winner
+
+
 def keep_artwork(winner: Airing, other: Airing) -> Airing:
+    winner = keep_station_logo(winner, other)
     if is_poster_artwork(other.artwork) and not is_poster_artwork(winner.artwork):
         return replace(winner, artwork=other.artwork, artwork_secondary="")
     if winner.artwork or not other.artwork:
@@ -300,6 +316,7 @@ class _WalkCtx:
     entity_id: str = ""
     artwork: str = ""
     artwork_secondary: str = ""
+    station_logo: str = ""
     artwork_score: int = 0
 
     def child(self, **kwargs: Any) -> _WalkCtx:
@@ -384,6 +401,9 @@ def _walk(
 def _context_from_node(node: dict[str, Any], ctx: _WalkCtx) -> _WalkCtx:
     title = _title_from_node(node) or ctx.title
     station = _station_from_node(node) or ctx.station
+    station_logo = _station_logo_from_node(node)
+    if not station_logo and station_key(station) == station_key(ctx.station):
+        station_logo = ctx.station_logo
     start = (
         _time_from_node(
             node,
@@ -422,6 +442,7 @@ def _context_from_node(node: dict[str, Any], ctx: _WalkCtx) -> _WalkCtx:
         artwork=artwork,
         artwork_secondary=artwork_secondary,
         artwork_score=artwork_score,
+        station_logo=station_logo,
     )
 
 
@@ -461,6 +482,7 @@ def _to_airing(
         channel=infer_channel(station, title),
         artwork=ctx.artwork,
         artwork_secondary=ctx.artwork_secondary,
+        station_logo=ctx.station_logo,
     )
 
 
@@ -531,6 +553,10 @@ def _airing_from_game_card(
             artwork=artwork,
             artwork_secondary=artwork_secondary,
             artwork_score=artwork_score,
+            station_logo=(
+                _station_logo_from_node(card)
+                or (ctx.station_logo if station_key(station) == station_key(ctx.station) else "")
+            ),
         ),
         now,
         fallback_minutes,
@@ -1152,6 +1178,21 @@ def _title_from_node(node: dict[str, Any]) -> str:
     acc = _dig(node, ("accessibility", "accessibilityData", "label"))
     if isinstance(acc, str) and acc.strip() and not acc.strip().endswith(".png"):
         return acc.strip()
+    return ""
+
+
+def _station_logo_from_node(node: dict[str, Any]) -> str:
+    # Only station metadata is authoritative; event/team artwork is unrelated.
+    station = node.get("station") or node.get("epgStationRenderer")
+    if not isinstance(station, dict):
+        return ""
+    renderer = station.get("epgStationRenderer") or station
+    if not isinstance(renderer, dict):
+        return ""
+    for key in ("icon", "thumbnail", "logo"):
+        url = _image_url_from_value(renderer.get(key), score=ICON_ARTWORK_SCORE)
+        if url:
+            return url
     return ""
 
 

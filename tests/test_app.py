@@ -724,3 +724,41 @@ async def test_refresh_401_flags_expired_when_chrome_is_on_welcome():
             await _mark_refresh_failure(MineError("YTTV session expired. Sign in again on tv.youtube.com."))
         assert session_expired_message(state.catalog.meta().get("last_error"))
         client.post("/api/auth/logout")
+
+
+def test_feed_routes_use_startup_logo_overrides_and_subtitle_setting(tmp_path, monkeypatch):
+    import json
+    from datetime import datetime, timedelta, timezone
+    from xml.etree import ElementTree as ET
+    from yttv_epg import app as app_module
+    from yttv_epg.config import Settings
+    from yttv_epg.lanes import LaneAssignment
+    from yttv_epg.parse import Airing
+
+    monkeypatch.setenv("XMLTV_INCLUDE_SUBTITLE", "false")
+    assert Settings(_env_file=None).xmltv_include_subtitle is False
+    monkeypatch.setenv("XMLTV_INCLUDE_SUBTITLE", "true")
+    assert Settings(_env_file=None).xmltv_include_subtitle is True
+    now = datetime.now(timezone.utc)
+    game = Airing("abcdefghijk", "Alabama at Kentucky", "ESPN", "event",
+                  now - timedelta(minutes=10), now + timedelta(hours=2),
+                  "https://tv.youtube.com/watch/abcdefghijk", sport="Football",
+                  station_logo="https://example.com/automatic.png")
+    path = tmp_path / "logos.json"
+    logo = "https://example.com/override.png?a=1&b=2"
+    path.write_text(json.dumps({" Espn ": logo}))
+    monkeypatch.setattr(app_module.settings, "station_logos_file", path)
+    monkeypatch.setattr(app_module.settings, "xmltv_include_subtitle", False)
+    monkeypatch.setattr(app_module, "_labeled_assignments", lambda: [LaneAssignment(1, game)])
+    with TestClient(app) as client:
+        xml = ET.fromstring(client.get("/xmltv.xml").text)
+        assert xml.find("channel/icon").get("src") == logo
+        assert xml.find("programme/sub-title") is None
+        assert "ESPN" in xml.findtext("programme/desc")
+        assert xml.find("programme/live") is not None
+        assert f'tvg-logo="{logo}"' in client.get("/playlist.m3u").text
+        # Overrides are a startup snapshot, not re-read on each feed request.
+        path.write_text("{}")
+        assert f'tvg-logo="{logo}"' in client.get("/playlist.m3u").text
+        monkeypatch.setattr(app_module.settings, "xmltv_include_subtitle", True)
+        assert ET.fromstring(client.get("/epg.xml").text).findtext("programme/sub-title") == "ESPN"

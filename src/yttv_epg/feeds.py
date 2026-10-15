@@ -6,7 +6,8 @@ from html import escape
 from xml.sax.saxutils import escape as xml_escape
 
 from yttv_epg.branding import LOGO_PATH, PRODUCT_NAME, SOURCE_NAME
-from yttv_epg.lanes import LaneAssignment
+from yttv_epg.lanes import LaneAssignment, whatson
+from yttv_epg.station_logos import station_key
 from yttv_epg.parse import (
     Airing,
     GUIDE_ARTWORK_HEIGHT,
@@ -36,16 +37,54 @@ def programme_icon(airing: Airing, base_url: str = "") -> str:
     return logo_url(base_url) if base_url else ""
 
 
-def xmltv(assignments: list[LaneAssignment], lane_count: int, *, base_url: str = "") -> str:
+def lane_logos(
+    assignments: list[LaneAssignment], lane_count: int, base_url: str,
+    now: datetime, overrides: dict[str, str] | None = None,
+) -> dict[int, str]:
+    overrides = overrides or {}
+    known: dict[str, str] = {}
+    by_lane: dict[int, list[LaneAssignment]] = {}
+    for row in sorted(assignments, key=lambda row: row.airing.start, reverse=True):
+        airing = row.airing
+        key = station_key(airing.station)
+        if key and airing.station_logo:
+            known.setdefault(key, airing.station_logo)
+        if airing.watch_id() and airing.end > airing.start:
+            by_lane.setdefault(row.lane, []).append(row)
+    result: dict[int, str] = {}
+    for lane in range(1, lane_count + 1):
+        rows = by_lane.get(lane, [])
+        selected = whatson(rows, lane, now)
+        if selected is None:
+            selected = min(
+                (row.airing for row in rows if row.airing.start > now),
+                key=lambda airing: (airing.start, airing.title, airing.video_id),
+                default=None,
+            )
+        key = station_key(selected.station) if selected else ""
+        result[lane] = (
+            overrides.get(key) or (selected.station_logo if selected else "")
+            or known.get(key) or (logo_url(base_url) if base_url else "")
+        )
+    return result
+
+
+def xmltv(
+    assignments: list[LaneAssignment], lane_count: int, *, base_url: str = "",
+    now: datetime | None = None, include_subtitle: bool = False,
+    station_logos: dict[str, str] | None = None,
+) -> str:
+    now = now or datetime.now(timezone.utc)
+    icons = lane_logos(assignments, lane_count, base_url, now, station_logos)
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         f'<tv generator-info-name="{_xml_attr(PRODUCT_NAME)}">',
     ]
-    icon = logo_url(base_url) if base_url else ""
     for lane in range(1, lane_count + 1):
         cid = _xml_attr(lane_id(lane))
         lines.append(f'  <channel id="{cid}">')
         lines.append(f"    <display-name>{_xml_text(lane_name(lane))}</display-name>")
+        icon = icons[lane]
         if icon:
             lines.append(f'    <icon src="{_xml_attr(icon)}" />')
         lines.append("  </channel>")
@@ -63,7 +102,7 @@ def xmltv(assignments: list[LaneAssignment], lane_count: int, *, base_url: str =
         cid = _xml_attr(lane_id(row.lane))
         lines.append(f'  <programme start="{start}" stop="{stop}" channel="{cid}">')
         lines.append(f"    <title>{_xml_text(row.airing.title)}</title>")
-        if row.airing.station and row.airing.station != row.airing.title:
+        if include_subtitle and row.airing.station and row.airing.station != row.airing.title:
             lines.append(f"    <sub-title>{_xml_text(row.airing.station)}</sub-title>")
         desc = _programme_desc(row.airing)
         if desc:
@@ -74,8 +113,10 @@ def xmltv(assignments: list[LaneAssignment], lane_count: int, *, base_url: str =
             lines.append(f"    <category>{_xml_text(sport)}</category>")
         if row.airing.channel:
             lines.append(f"    <category>{_xml_text(row.airing.channel)}</category>")
-        lines.append("    <live/>")
-        lines.append("    <new/>")
+        # Upcoming broadcasts need these flags too; expired listings do not.
+        if row.airing.end > now:
+            lines.append("    <live/>")
+            lines.append("    <new/>")
         if row.airing.deeplink:
             lines.append(f"    <url>{_xml_text(row.airing.deeplink)}</url>")
         icon_src = programme_icon(row.airing, base_url)
@@ -99,8 +140,13 @@ def m3u(
     start_channel: int,
     package_name: str,
     alternate_package_name: str,
+    assignments: list[LaneAssignment] | None = None,
+    now: datetime | None = None,
+    station_logos: dict[str, str] | None = None,
 ) -> str:
     root = base_url.rstrip("/")
+    now = now or datetime.now(timezone.utc)
+    icons = lane_logos(assignments or [], lane_count, root, now, station_logos)
     guide = f"{root}/xmltv.xml"
     lines = [f'#EXTM3U url-tvg="{guide}" x-tvg-url="{guide}"']
     for lane in range(1, lane_count + 1):
@@ -109,9 +155,10 @@ def m3u(
             f"{root}/whatson/{lane}?format=json&include=deeplink"
             "&dynamic_url_json_key=deeplink_url"
         )
+        icon = _xml_clean(icons[lane]).replace('"', "%22")
         lines.append(
             f'#EXTINF:-1 tvg-id="{lane_id(lane)}" tvg-chno="{number}" '
-            f'tvg-name="{lane_name(lane)}" tvg-logo="{logo_url(root)}" '
+            f'tvg-name="{lane_name(lane)}" tvg-logo="{icon}" '
             f'channel-id="{lane_id(lane)}" '
             f'group-title="YTTV Sports" '
             f'package-name="{package_name}" '

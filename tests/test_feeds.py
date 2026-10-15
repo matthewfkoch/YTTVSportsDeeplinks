@@ -80,6 +80,7 @@ def test_xmltv_marks_programmes_sports_live_and_new():
             LaneAssignment(lane=1, airing=generic_sports),
         ],
         lane_count=1,
+        now=start - timedelta(hours=1),
     )
     root = ET.fromstring(body)
     programmes = root.findall("programme")
@@ -329,3 +330,65 @@ def test_whatson_matches_xmltv_programme_on_that_lane():
         payload = whatson_payload(row.lane, current)
         assert payload["ok"] is True
         assert payload["deeplink_url"] == row.airing.deeplink
+
+
+def test_xmltv_time_boundaries_and_optional_subtitle():
+    from dataclasses import replace
+
+    now = datetime(2026, 10, 20, 20, tzinfo=timezone.utc)
+    events = [
+        replace(_airing(), title=label, start=start, end=end, live=live)
+        for label, start, end, live in [
+            ("Past", now - timedelta(hours=3), now - timedelta(hours=1), True),
+            ("Ended", now - timedelta(hours=1), now, True),
+            ("Active", now, now + timedelta(hours=1), False),
+            ("Upcoming", now + timedelta(hours=1), now + timedelta(hours=2), False),
+        ]
+    ]
+    rows = [LaneAssignment(1, event) for event in events]
+    root = ET.fromstring(xmltv(rows, 1, now=now))
+    programmes = root.findall("programme")
+    assert len(programmes) == 4
+    for programme in programmes:
+        expected = programme.findtext("title") in {"Active", "Upcoming"}
+        for tag in ("live", "new"):
+            assert (programme.find(tag) is not None) == expected
+        assert "Sports" in [c.text for c in programme.findall("category")]
+        assert programme.find("sub-title") is None
+        assert events[0].station in programme.findtext("desc")
+    enabled = ET.fromstring(xmltv(rows, 1, now=now, include_subtitle=True))
+    assert all(p.findtext("sub-title") == events[0].station for p in enabled.findall("programme"))
+
+
+def test_lane_logos_match_feeds_at_transitions_and_gaps():
+    from dataclasses import replace
+
+    now = datetime(2026, 10, 20, 20, tzinfo=timezone.utc)
+    espn = replace(_airing(), start=now, end=now + timedelta(hours=1),
+                   station="ESPN", station_logo="https://example.com/espn.png")
+    fs2 = replace(espn, start=espn.end + timedelta(hours=1), end=espn.end + timedelta(hours=2),
+                  station="FS2", station_logo="https://example.com/fs2.png")
+    donor = replace(espn, start=now - timedelta(hours=2), end=now - timedelta(hours=1),
+                    station="NFL Network", station_logo="https://example.com/nfl.png")
+    missing = replace(espn, station="NFL Network", station_logo="")
+    unknown = replace(espn, station="Unknown", station_logo="")
+    fs1 = replace(espn, station="FS1", station_logo="")
+    rows = [LaneAssignment(1, espn), LaneAssignment(1, fs2), LaneAssignment(2, donor),
+            LaneAssignment(2, missing), LaneAssignment(3, unknown), LaneAssignment(4, fs1)]
+    root_url = "http://localhost:8095"
+    override = "https://example.com/override.png?a=1&b=2"
+    for when, expected in [(now, override), (espn.end, fs2.station_logo),
+                           (fs2.start, fs2.station_logo), (fs2.end, root_url + "/static/logo.png")]:
+        args = dict(now=when, station_logos={"espn": override})
+        root = ET.fromstring(xmltv(rows, 5, base_url=root_url, **args))
+        playlist = m3u(base_url=root_url, lane_count=5, start_channel=9100,
+                       package_name="app", alternate_package_name="alt", assignments=rows, **args)
+        xml_logos = [c.find("icon").get("src") for c in root.findall("channel")]
+        m3u_logos = re.findall(r'tvg-logo="([^"]+)"', playlist)
+        assert xml_logos == m3u_logos
+        assert xml_logos[0] == expected
+        assert xml_logos[4] == root_url + "/static/logo.png"
+        if when == now:
+            assert xml_logos[1] == donor.station_logo
+            assert xml_logos[2] == root_url + "/static/logo.png"
+            assert xml_logos[3] == root_url + "/static/logo.png"
