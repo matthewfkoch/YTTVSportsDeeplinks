@@ -37,6 +37,70 @@ def test_xmltv_contains_event_and_deeplink():
     ) in body
 
 
+def test_xmltv_marks_programmes_sports_live_and_new():
+    start = datetime(2026, 10, 20, 23, 0, tzinfo=timezone.utc)
+    football = Airing(
+        video_id="football001",
+        title="Alabama at Georgia",
+        station="ESPN",
+        kind="event",
+        start=start,
+        end=start + timedelta(hours=3),
+        deeplink="https://tv.youtube.com/watch/football001",
+        live=False,
+        sport="Football",
+        channel="ESPN",
+    )
+    unlabeled = Airing(
+        video_id="nosport0001",
+        title="Untitled Match",
+        station="ESPN",
+        kind="event",
+        start=start + timedelta(hours=4),
+        end=start + timedelta(hours=6),
+        deeplink="https://tv.youtube.com/watch/nosport0001",
+        live=False,
+        sport="",
+    )
+    generic_sports = Airing(
+        video_id="sports00001",
+        title="Sports Match",
+        station="ESPN",
+        kind="event",
+        start=start + timedelta(hours=7),
+        end=start + timedelta(hours=9),
+        deeplink="https://tv.youtube.com/watch/sports00001",
+        live=False,
+        sport="Sports",
+    )
+    body = xmltv(
+        [
+            LaneAssignment(lane=1, airing=football),
+            LaneAssignment(lane=1, airing=unlabeled),
+            LaneAssignment(lane=1, airing=generic_sports),
+        ],
+        lane_count=1,
+    )
+    root = ET.fromstring(body)
+    programmes = root.findall("programme")
+    assert len(programmes) == 3
+    for programme in programmes:
+        categories = [item.text for item in programme.findall("category")]
+        assert categories.count("Sports") == 1
+        for tag in ("live", "new"):
+            elements = programme.findall(tag)
+            assert len(elements) == 1
+            assert elements[0].text is None
+            assert not elements[0].attrib
+            assert len(elements[0]) == 0
+    football_el = next(item for item in programmes if item.findtext("title") == "Alabama at Georgia")
+    assert [item.text for item in football_el.findall("category")] == ["Sports", "Football", "ESPN"]
+    unlabeled_el = next(item for item in programmes if item.findtext("title") == "Untitled Match")
+    assert [item.text for item in unlabeled_el.findall("category")] == ["Sports"]
+    generic_el = next(item for item in programmes if item.findtext("title") == "Sports Match")
+    assert [item.text for item in generic_el.findall("category")] == ["Sports"]
+
+
 def test_xmltv_omits_events_without_watch_link():
     start = datetime(2026, 9, 4, 20, 0, tzinfo=timezone.utc)
     upcoming = Airing(

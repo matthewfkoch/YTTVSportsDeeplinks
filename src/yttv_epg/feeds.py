@@ -68,9 +68,14 @@ def xmltv(assignments: list[LaneAssignment], lane_count: int, *, base_url: str =
         desc = _programme_desc(row.airing)
         if desc:
             lines.append(f"    <desc>{_xml_text(desc)}</desc>")
-        lines.append(f"    <category>{_xml_text(row.airing.sport or 'Sports')}</category>")
+        lines.append("    <category>Sports</category>")
+        sport = (row.airing.sport or "").strip()
+        if sport and sport.casefold() != "sports":
+            lines.append(f"    <category>{_xml_text(sport)}</category>")
         if row.airing.channel:
             lines.append(f"    <category>{_xml_text(row.airing.channel)}</category>")
+        lines.append("    <live/>")
+        lines.append("    <new/>")
         if row.airing.deeplink:
             lines.append(f"    <url>{_xml_text(row.airing.deeplink)}</url>")
         icon_src = programme_icon(row.airing, base_url)
