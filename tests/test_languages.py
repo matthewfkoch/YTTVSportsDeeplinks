@@ -51,3 +51,8 @@ def test_reconstructed_game_card_keeps_language_label():
     events = parse_browse(payload)
     assert len(events) == 1
     assert events[0].language == 'es'
+
+
+@pytest.mark.parametrize("title", ["Spanish Fort at Alabama", "Spanish Springs vs. Reno", "English at Kentucky"])
+def test_team_names_are_not_language_labels(title):
+    assert detect_language("ESPN+", title) == ""

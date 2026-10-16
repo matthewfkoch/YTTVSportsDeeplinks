@@ -20,11 +20,16 @@ def language_code(value: str) -> str:
 
 
 def detect_language(station: str = "", *labels: str) -> str:
-    text = _fold(" ".join(labels))
-    if re.search(r"\b(en espanol|espanol|spanish(?:[- ]language)?)\b", text):
-        return "es"
-    if re.search(r"\b(in english|english(?:[- ]language)?)\b", text):
-        return "en"
+    for label in labels:
+        text = _fold(label).strip()
+        if (re.search(r"\ben espanol\b|\bspanish[- ]language\b", text)
+                or re.search(r"[\[(]\s*(spanish|espanol)\s*[\])]", text)
+                or re.search(r"(?:^|[•|:])\s*(spanish|espanol)\s*(?:$|[:•|]|[-–—]\s)", text)):
+            return "es"
+        if (re.search(r"\bin english\b|\benglish[- ]language\b", text)
+                or re.search(r"[\[(]\s*english\s*[\])]", text)
+                or re.search(r"(?:^|[•|:])\s*english\s*(?:$|[:•|]|[-–—]\s)", text)):
+            return "en"
     key = " ".join(_fold(station).split())
     if key in {"espn deportes", "tudn", "telemundo", "universo", "univision", "unimas", "bein sports en espanol"}:
         return "es"
