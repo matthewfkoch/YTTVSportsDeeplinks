@@ -7,7 +7,7 @@ from xml.sax.saxutils import escape as xml_escape
 
 from yttv_epg.branding import LOGO_PATH, PRODUCT_NAME, SOURCE_NAME
 from yttv_epg.lanes import LaneAssignment, whatson
-from yttv_epg.station_logos import station_key
+from yttv_epg.station_logos import station_key, bundled_logo
 from yttv_epg.parse import (
     Airing,
     GUIDE_ARTWORK_HEIGHT,
@@ -40,9 +40,10 @@ def programme_icon(airing: Airing, base_url: str = "") -> str:
 def lane_logos(
     assignments: list[LaneAssignment], lane_count: int, base_url: str,
     now: datetime, overrides: dict[str, str] | None = None,
+    persisted_logos: dict[str, str] | None = None,
 ) -> dict[int, str]:
     overrides = overrides or {}
-    known: dict[str, str] = {}
+    known: dict[str, str] = dict(persisted_logos or {})
     by_lane: dict[int, list[LaneAssignment]] = {}
     for row in sorted(assignments, key=lambda row: row.airing.start, reverse=True):
         airing = row.airing
@@ -64,7 +65,8 @@ def lane_logos(
         key = station_key(selected.station) if selected else ""
         result[lane] = (
             overrides.get(key) or (selected.station_logo if selected else "")
-            or known.get(key) or (logo_url(base_url) if base_url else "")
+            or known.get(key) or (bundled_logo(selected.station, base_url) if selected else "")
+            or (logo_url(base_url) if base_url else "")
         )
     return result
 
@@ -73,9 +75,10 @@ def xmltv(
     assignments: list[LaneAssignment], lane_count: int, *, base_url: str = "",
     now: datetime | None = None, include_subtitle: bool = False,
     station_logos: dict[str, str] | None = None,
+    persisted_logos: dict[str, str] | None = None,
 ) -> str:
     now = now or datetime.now(timezone.utc)
-    icons = lane_logos(assignments, lane_count, base_url, now, station_logos)
+    icons = lane_logos(assignments, lane_count, base_url, now, station_logos, persisted_logos)
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         f'<tv generator-info-name="{_xml_attr(PRODUCT_NAME)}">',
@@ -143,10 +146,11 @@ def m3u(
     assignments: list[LaneAssignment] | None = None,
     now: datetime | None = None,
     station_logos: dict[str, str] | None = None,
+    persisted_logos: dict[str, str] | None = None,
 ) -> str:
     root = base_url.rstrip("/")
     now = now or datetime.now(timezone.utc)
-    icons = lane_logos(assignments or [], lane_count, root, now, station_logos)
+    icons = lane_logos(assignments or [], lane_count, root, now, station_logos, persisted_logos)
     guide = f"{root}/xmltv.xml"
     lines = [f'#EXTM3U url-tvg="{guide}" x-tvg-url="{guide}"']
     for lane in range(1, lane_count + 1):

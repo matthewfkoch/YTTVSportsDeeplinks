@@ -28,6 +28,7 @@ from yttv_epg.espn_schedule import apply_espn_sports, fetch_espn_schedule
 from yttv_epg.feeds import apituner_export, m3u, whatson_payload, xmltv
 from yttv_epg.innertube import CLIENTS, InnerTubeClient, MineError, session_expired_message
 from yttv_epg.lanes import LaneAssignment, pack_lanes, whatson
+from yttv_epg.languages import broadcast_language
 from yttv_epg.parse import Airing, merge_airings
 from yttv_epg.session import CookieError, parse_cookie_text, require_youtube_tv_cookies
 from yttv_epg.session_store import SavedSession, SessionStore
@@ -99,8 +100,10 @@ def _ensure_session() -> SavedSession:
     return session
 
 
-def _with_espn_sports(events: Optional[list[Airing]] = None) -> list[Airing]:
+def _with_espn_sports(events: Optional[list[Airing]] = None, *, apply_language_filter: bool = False) -> list[Airing]:
     rows = events if events is not None else state.catalog.events(kind="event")
+    if apply_language_filter and state.catalog.hide_spanish():
+        rows = [item for item in rows if broadcast_language(item) != "es"]
     return merge_airings(apply_espn_sports(merge_airings(rows), state.espn_listings))
 
 
@@ -122,7 +125,7 @@ def _visible_events(
     hidden_sports: Optional[list[str]] = None,
     hidden_channels: Optional[list[str]] = None,
 ) -> list[Airing]:
-    rows = _with_espn_sports(events)
+    rows = _with_espn_sports(events, apply_language_filter=True)
     sports = hidden_sports if hidden_sports is not None else state.catalog.hidden_sports()
     channels = hidden_channels if hidden_channels is not None else state.catalog.hidden_channels()
     return visible_events(rows, sports, channels, require_watch_link=True)
@@ -163,7 +166,10 @@ def _store_lanes(
 def _labeled_assignments() -> list[LaneAssignment]:
     if state.lane_assignments is None:
         _set_lane_cache(state.catalog.assignments())
-    return state.lane_assignments or []
+    rows = state.lane_assignments or []
+    if state.catalog.hide_spanish():
+        rows = [row for row in rows if broadcast_language(row.airing) != "es"]
+    return rows
 
 
 async def _refresh_espn_listings(force: bool = False) -> bool:
@@ -545,6 +551,7 @@ async def lifespan(_app: FastAPI):
     prune_chrome_profile(settings.chrome_profile_dir, cap_cache=True)
     state.catalog.ensure_hidden_sports(settings.hidden_sports_list)
     state.catalog.ensure_hidden_channels(settings.hidden_channels_list)
+    state.catalog.ensure_hide_spanish(settings.hide_spanish)
     visible = _visible_events()
     _store_lanes(
         _pack_visible(visible),
@@ -627,6 +634,7 @@ async def dashboard(request: Request) -> HTMLResponse:
             "channels": channel_counts(linked),
             "hidden_sports": hidden,
             "hidden_channels": hidden_channels,
+            "hide_spanish": state.catalog.hide_spanish(),
             "lane_count": settings.lane_count,
             "lanes_used": int(meta.get("lanes_used") or 0),
             "dropped_events": int(meta.get("dropped_events") or 0),
@@ -733,6 +741,7 @@ async def get_filters() -> dict[str, Any]:
         "channels": channel_counts(events),
         "hidden": hidden,
         "hidden_channels": hidden_channels,
+        "hide_spanish": state.catalog.hide_spanish(),
     }
 
 
@@ -746,6 +755,10 @@ async def set_filters(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Expected a JSON object")
     hidden = state.catalog.hidden_sports()
     hidden_channels = state.catalog.hidden_channels()
+    if "hide_spanish" in body:
+        if not isinstance(body["hide_spanish"], bool):
+            raise HTTPException(status_code=400, detail="hide_spanish must be a boolean")
+        state.catalog.set_hide_spanish(body["hide_spanish"])
     if "hidden" in body and isinstance(body["hidden"], list):
         hidden = [str(item) for item in body["hidden"] if str(item).strip()]
     if "hidden_channels" in body and isinstance(body["hidden_channels"], list):
@@ -769,6 +782,7 @@ async def set_filters(request: Request) -> dict[str, Any]:
         "ok": True,
         "hidden": state.catalog.hidden_sports(),
         "hidden_channels": state.catalog.hidden_channels(),
+        "hide_spanish": state.catalog.hide_spanish(),
         "events": len(visible),
         "all_events": len(watchable),
     }
@@ -837,6 +851,7 @@ async def xmltv_feed(request: Request) -> Response:
         now=datetime.now(timezone.utc),
         include_subtitle=settings.xmltv_include_subtitle,
         station_logos=state.station_logos,
+        persisted_logos=state.catalog.station_logos(),
     )
     return Response(content=body, media_type="application/xml")
 
@@ -852,6 +867,7 @@ async def playlist(request: Request) -> PlainTextResponse:
         assignments=_labeled_assignments(),
         now=datetime.now(timezone.utc),
         station_logos=state.station_logos,
+        persisted_logos=state.catalog.station_logos(),
     )
     return PlainTextResponse(body, media_type="application/x-mpegurl")
 

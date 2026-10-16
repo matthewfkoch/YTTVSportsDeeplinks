@@ -1,0 +1,57 @@
+{
+  "espn.png": {
+    "asset_url": "https://secure.espncdn.com/watchespn/images/channels/e748f3c0-3f7c-3088-a90a-0ccb2588e0ed.png",
+    "source_page": "https://www.espn.com/watch/catalog"
+  },
+  "espn2.png": {
+    "asset_url": "https://secure.espncdn.com/watchespn/images/channels/017f41a2-ef4f-39d3-9f45-f680b88cd23b.png",
+    "source_page": "https://www.espn.com/watch/catalog"
+  },
+  "espnu.png": {
+    "asset_url": "https://secure.espncdn.com/watchespn/images/channels/500b1f7c-dad5-33f9-907c-87427babe201.png",
+    "source_page": "https://www.espn.com/watch/catalog"
+  },
+  "espnews.png": {
+    "asset_url": "https://secure.espncdn.com/watchespn/images/channels/1e760a1c-c204-339d-8317-8e615c9cc0e0.png",
+    "source_page": "https://www.espn.com/watch/catalog"
+  },
+  "espn-plus.png": {
+    "asset_url": "https://secure.espncdn.com/watchespn/images/channels/a698f0a3-dcfc-4684-9ca2-3082a28111cc.png",
+    "source_page": "https://www.espn.com/watch/catalog"
+  },
+  "sec-network.png": {
+    "asset_url": "https://secure.espncdn.com/watchespn/images/channels/74459ca3-cf85-381d-b90d-a95ff6e7a207.png",
+    "source_page": "https://www.espn.com/watch/catalog"
+  },
+  "sec-plus.png": {
+    "asset_url": "https://secure.espncdn.com/watchespn/images/channels/19644d95-cc83-38ed-bdf9-50b9f2e9ebfc.png",
+    "source_page": "https://www.espn.com/watch/catalog"
+  },
+  "acc-network.png": {
+    "asset_url": "https://secure.espncdn.com/watchespn/images/channels/76b92674-175c-4ff1-8989-380aa514eb87.png",
+    "source_page": "https://www.espn.com/watch/catalog"
+  },
+  "acc-extra.png": {
+    "asset_url": "https://secure.espncdn.com/watchespn/images/channels/9f538e0b-a896-3325-a417-79034e03a248.png",
+    "source_page": "https://www.espn.com/watch/catalog"
+  },
+  "fs1.png": {
+    "asset_url": "https://statics.foxsports.com/static/orion/images/network-assets/FS1-1040x585.jpg",
+    "source_page": "https://www.foxsports.com/fs1"
+  },
+  "cbs-sports-network.png": {
+    "asset_url": "https://www.cbssportsnetwork.com/assets/images/logo-footer.png",
+    "source_page": "https://www.cbssportsnetwork.com/"
+  },
+  "fs2.png": {
+    "asset_url": "https://statics.foxsports.com/static/orion/css/global.min.css",
+    "source_page": "https://www.foxsports.com/live/fs2",
+    "selector": ".channel-logo.fs2",
+    "conversion": "Embedded SVG rasterized at 540px width"
+  },
+  "nfl-network.png": {
+    "asset_url": "https://static.www.nfl.com/league/apps/web/global/logos/broadcaster/broadcaster_NFLN.svg",
+    "source_page": "https://www.nfl.com/network/",
+    "conversion": "SVG rasterized at 540px width"
+  }
+}

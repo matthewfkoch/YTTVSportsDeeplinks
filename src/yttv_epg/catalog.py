@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 from yttv_epg.branding import for_ui
+from yttv_epg.languages import broadcast_language
+from yttv_epg.station_logos import station_key
 from yttv_epg.lanes import LaneAssignment
 from yttv_epg.parse import Airing, keep_artwork
 from yttv_epg.sports import clean_station, infer_channel, is_matchup, resolve_sport
@@ -88,7 +90,33 @@ class Catalog:
             )
         if "station_logo" not in cols:
             self._conn.execute("ALTER TABLE events ADD COLUMN station_logo TEXT NOT NULL DEFAULT ''")
+        if "language" not in cols:
+            self._conn.execute("ALTER TABLE events ADD COLUMN language TEXT NOT NULL DEFAULT ''")
+        self._conn.execute("CREATE TABLE IF NOT EXISTS station_logos (station TEXT PRIMARY KEY, url TEXT NOT NULL)")
+        self._remember_station_logos(self._conn, self.events())
         self._conn.commit()
+
+    def _remember_station_logos(self, cur, events: list[Airing]) -> None:
+        cur.executemany(
+            "INSERT INTO station_logos(station, url) VALUES (?, ?) ON CONFLICT(station) DO UPDATE SET url=excluded.url",
+            [(station_key(item.station), item.station_logo) for item in events if station_key(item.station) and item.station_logo],
+        )
+
+    def station_logos(self) -> dict[str, str]:
+        with self._lock:
+            return dict(self._conn.execute("SELECT station, url FROM station_logos").fetchall())
+
+    def hide_spanish(self) -> bool:
+        return self.meta().get("hide_spanish", "false") == "true"
+
+    def set_hide_spanish(self, hidden: bool) -> None:
+        with self._lock:
+            self._set_meta("hide_spanish", "true" if hidden else "false")
+            self._conn.commit()
+
+    def ensure_hide_spanish(self, default: bool) -> None:
+        if "hide_spanish" not in self.meta():
+            self.set_hide_spanish(default)
 
     def replace(
         self,
@@ -144,10 +172,11 @@ class Catalog:
                 unique[key] = keep_artwork(prev, item)
         rows = list(unique.values())
         try:
+            self._remember_station_logos(cur, airings)
             cur.executemany(
                 """
-                INSERT INTO events(video_id, title, station, kind, start_ts, end_ts, deeplink, live, source, sport, entity_id, channel, artwork, artwork_secondary, station_logo)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO events(video_id, title, station, kind, start_ts, end_ts, deeplink, live, source, sport, entity_id, channel, artwork, artwork_secondary, station_logo, language)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(video_id, start_ts) DO UPDATE SET
                     title = excluded.title,
                     station = excluded.station,
@@ -161,7 +190,8 @@ class Catalog:
                     channel = excluded.channel,
                     artwork = excluded.artwork,
                     artwork_secondary = excluded.artwork_secondary,
-                    station_logo = excluded.station_logo
+                    station_logo = excluded.station_logo,
+                    language = excluded.language
                 """,
                 [
                     self._row_values(item)
@@ -226,6 +256,7 @@ class Catalog:
             return
         with self._lock:
             cur = self._conn.cursor()
+            self._remember_station_logos(cur, [resolved for _, resolved in pairs])
             for previous, resolved in pairs:
                 cur.execute(
                     "DELETE FROM events WHERE video_id = ? AND start_ts = ?",
@@ -233,8 +264,8 @@ class Catalog:
                 )
                 cur.execute(
                     """
-                    INSERT INTO events(video_id, title, station, kind, start_ts, end_ts, deeplink, live, source, sport, entity_id, channel, artwork, artwork_secondary, station_logo)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO events(video_id, title, station, kind, start_ts, end_ts, deeplink, live, source, sport, entity_id, channel, artwork, artwork_secondary, station_logo, language)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(video_id, start_ts) DO UPDATE SET
                         title = excluded.title,
                         station = excluded.station,
@@ -248,7 +279,8 @@ class Catalog:
                         channel = excluded.channel,
                         artwork = excluded.artwork,
                         artwork_secondary = excluded.artwork_secondary,
-                        station_logo = excluded.station_logo
+                        station_logo = excluded.station_logo,
+                        language = excluded.language
                     """,
                     self._row_values(resolved),
                 )
@@ -400,6 +432,7 @@ class Catalog:
             item.artwork,
             item.artwork_secondary,
             item.station_logo,
+            broadcast_language(item),
         )
 
     def _row_to_airing(self, row: sqlite3.Row) -> Airing:
@@ -424,4 +457,5 @@ class Catalog:
             artwork=str(row["artwork"]) if "artwork" in keys else "",
             artwork_secondary=str(row["artwork_secondary"]) if "artwork_secondary" in keys else "",
             station_logo=str(row["station_logo"]) if "station_logo" in keys else "",
+            language=str(row["language"]) if "language" in keys else "",
         )

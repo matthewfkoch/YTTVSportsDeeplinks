@@ -39,3 +39,21 @@ def load_station_logos(path: Path) -> dict[str, str]:
             continue
         logos[station_key(name)] = url
     return logos
+
+
+BUNDLED_LOGOS = {
+    "espn": "espn", "espn2": "espn2", "espnu": "espnu", "espnews": "espnews",
+    "espn+": "espn-plus", "espn plus": "espn-plus",
+    "sec network": "sec-network", "sec+": "sec-plus", "sec network +": "sec-plus",
+    "sec network+": "sec-plus", "sec network plus": "sec-plus",
+    "acc network": "acc-network", "accn": "acc-network", "acc extra": "acc-extra",
+    "acc network extra": "acc-extra", "accnx": "acc-extra",
+    "fs1": "fs1", "fox sports 1": "fs1", "fs2": "fs2", "fox sports 2": "fs2",
+    "cbs sports network": "cbs-sports-network", "cbssn": "cbs-sports-network",
+    "nfl network": "nfl-network",
+}
+
+
+def bundled_logo(station: str, base_url: str) -> str:
+    name = BUNDLED_LOGOS.get(station_key(station))
+    return f"{base_url.rstrip('/')}/static/station-logos/{name}.png" if name else ""

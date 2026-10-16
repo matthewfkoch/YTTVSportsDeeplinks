@@ -8,6 +8,7 @@ from urllib.parse import quote, urlparse
 from zoneinfo import ZoneInfo
 
 from yttv_epg.station_logos import station_key
+from yttv_epg.languages import broadcast_language, detect_language, language_code
 from yttv_epg.sports import (
     clean_station,
     infer_channel,
@@ -111,6 +112,7 @@ class Airing:
     artwork: str = ""
     artwork_secondary: str = ""
     station_logo: str = ""
+    language: str = ""
 
     def watch_id(self) -> str:
         return self.video_id if _ok_video_id(self.video_id) else ""
@@ -135,6 +137,7 @@ class Airing:
             "artwork": self.artwork,
             "artwork_secondary": self.artwork_secondary,
             "station_logo": self.station_logo,
+            "language": broadcast_language(self),
         }
 
 
@@ -213,6 +216,8 @@ def _prefer_linear_simulcasts(airings: list[Airing]) -> list[Airing]:
 
 
 def _same_matchup_slot(left: Airing, right: Airing) -> bool:
+    if broadcast_language(left) != broadcast_language(right):
+        return False
     if not is_matchup(left.title) or not is_matchup(right.title):
         return False
     if _matchup_key(left.title) != _matchup_key(right.title):
@@ -289,6 +294,8 @@ def keep_station_logo(winner: Airing, other: Airing) -> Airing:
 
 def keep_artwork(winner: Airing, other: Airing) -> Airing:
     winner = keep_station_logo(winner, other)
+    if not winner.language and other.language and station_key(winner.station) == station_key(other.station):
+        winner = replace(winner, language=other.language)
     if is_poster_artwork(other.artwork) and not is_poster_artwork(winner.artwork):
         return replace(winner, artwork=other.artwork, artwork_secondary="")
     if winner.artwork or not other.artwork:
@@ -317,6 +324,7 @@ class _WalkCtx:
     artwork: str = ""
     artwork_secondary: str = ""
     station_logo: str = ""
+    language: str = ""
     artwork_score: int = 0
 
     def child(self, **kwargs: Any) -> _WalkCtx:
@@ -398,6 +406,19 @@ def _walk(
         yield from _walk(value, next_ctx, now, fallback_minutes, source)
 
 
+def _language_from_node(node: dict[str, Any], station: str) -> str:
+    for key in ("audioLanguage", "broadcastLanguage", "language", "languageCode"):
+        value = node.get(key)
+        if isinstance(value, dict):
+            value = value.get("code") or value.get("languageCode") or _text(value)
+        code = language_code(value) if isinstance(value, str) else ""
+        if code:
+            return code
+    return detect_language("", *(_text(node.get(key)) for key in (
+        "title", "primaryText", "secondaryText", "subtitle", "description",
+    )))
+
+
 def _context_from_node(node: dict[str, Any], ctx: _WalkCtx) -> _WalkCtx:
     title = _title_from_node(node) or ctx.title
     station = _station_from_node(node) or ctx.station
@@ -443,6 +464,9 @@ def _context_from_node(node: dict[str, Any], ctx: _WalkCtx) -> _WalkCtx:
         artwork_secondary=artwork_secondary,
         artwork_score=artwork_score,
         station_logo=station_logo,
+        language=(_language_from_node(node, station)
+                  or (ctx.language if station_key(station) == station_key(ctx.station) else "")
+                  or detect_language(station)),
     )
 
 
@@ -483,6 +507,7 @@ def _to_airing(
         artwork=ctx.artwork,
         artwork_secondary=ctx.artwork_secondary,
         station_logo=ctx.station_logo,
+        language=ctx.language or detect_language(station, title),
     )
 
 
@@ -553,6 +578,7 @@ def _airing_from_game_card(
             artwork=artwork,
             artwork_secondary=artwork_secondary,
             artwork_score=artwork_score,
+            language=_language_from_node(card, station) or ctx.language or detect_language(station, when_text, secondary),
             station_logo=(
                 _station_logo_from_node(card)
                 or (ctx.station_logo if station_key(station) == station_key(ctx.station) else "")

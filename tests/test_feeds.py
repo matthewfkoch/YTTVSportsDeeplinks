@@ -391,4 +391,21 @@ def test_lane_logos_match_feeds_at_transitions_and_gaps():
         if when == now:
             assert xml_logos[1] == donor.station_logo
             assert xml_logos[2] == root_url + "/static/logo.png"
-            assert xml_logos[3] == root_url + "/static/logo.png"
+            assert xml_logos[3] == root_url + "/static/station-logos/fs1.png"
+
+
+def test_lane_logo_priority_with_persisted_and_bundled_fallbacks():
+    from dataclasses import replace
+    from yttv_epg.feeds import lane_logos
+
+    now = datetime(2026,10,20,tzinfo=timezone.utc)
+    game = replace(_airing(), start=now, end=now+timedelta(hours=2), station="ESPN+", station_logo="")
+    rows = [LaneAssignment(1,game)]
+    base = "http://localhost:8095"
+    assert lane_logos(rows,1,base,now)[1] == base+"/static/station-logos/espn-plus.png"
+    persisted = {"espn+":"https://example.com/persisted.png", "espn":"https://example.com/wrong.png"}
+    assert lane_logos(rows,1,base,now,persisted_logos=persisted)[1] == persisted["espn+"]
+    game.station_logo="https://example.com/current.png"
+    assert lane_logos(rows,1,base,now,persisted_logos=persisted)[1] == game.station_logo
+    override = {"espn+":"https://example.com/override.png"}
+    assert lane_logos(rows,1,base,now,override,persisted)[1] == override["espn+"]

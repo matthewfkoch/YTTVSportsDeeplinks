@@ -98,6 +98,7 @@ Upcoming events often have no watch ID until they are close to air. Those stay o
 | `XMLTV_INCLUDE_SUBTITLE` | Include the network name as a programme subtitle (default `false`). The network remains in the description. |
 | `STATION_LOGOS_FILE` | Optional station-to-logo JSON file inside the container (default `/data/station-logos.json`). Restart after changes. |
 | `HIDDEN_SPORTS` | Comma-separated sports to hide on first run (`Volleyball,Field Hockey`) |
+| `HIDE_SPANISH` | Initial default for the saved Hide Spanish broadcasts preference (default `false`). Afterwards use the dashboard checkbox. |
 | `HIDDEN_CHANNELS` | Comma-separated channel families to hide on first run (`ESPN+,NBC Sports Extra`) |
 | `MAX_HUBS` | How many sports network hubs to mine (default 16) |
 | `EPG_PAGES` / `HUB_PAGES` | How far to paginate the linear grid and hub schedules |
@@ -145,8 +146,8 @@ subtitles. The network is always included in the programme description.
 
 M3U `tvg-logo` and XMLTV channel icons use the current event's broadcaster, or the
 next watchable event's broadcaster during a gap. Logo priority is: user override,
-the selected event's station metadata, another known logo for the same station,
-then the generic project logo. Event thumbnails remain separate. Refresh both the
+the selected event's station metadata, a persisted logo for the exact station,
+a bundled broadcaster fallback, then the generic project logo. Event thumbnails remain separate. Refresh both the
 M3U source and XMLTV guide in Channels after updating; cached logos may not change
 immediately. An empty lane uses the generic logo.
 
@@ -171,3 +172,38 @@ separate. A missing file uses automatic logos. Malformed files or invalid entrie
 log a warning and fall back to automatic logos for the affected stations. URLs must
 be reachable by Channels DVR. Changing `STATION_LOGOS_FILE` in `.env` requires
 `docker compose up -d` to recreate the container with the new setting.
+
+## Spanish broadcast filtering and logo coverage
+
+Use **Hide Spanish broadcasts** in the Sports section to exclude Spanish-language
+listings from tuner lanes and XMLTV. It is off by default and saved in the data
+volume. `HIDE_SPANISH` supplies the initial default only; subsequent changes should
+use the dashboard. The `/api/filters` GET response includes `hide_spanish`; POST a
+JSON boolean such as `{"hide_spanish": true}` to change it.
+
+The filter recognizes explicit audio-language metadata, labels such as “En Español”
+and “Spanish-language,” and these station identities: ESPN Deportes, TUDN,
+Telemundo, Universo, Univision, UniMás, beIN SPORTS en Español, and ViX Premium
+Deportes lanes. Unknown-language broadcasts remain included. Accents, team names,
+and a game's country do not determine language. English and Spanish versions are
+kept separate during duplicate matching, so hiding Spanish can retain the English
+version. Existing unlabeled listings may need a full guide refresh to obtain
+language metadata before they can be classified.
+
+Discovered broadcaster logos are stored independently of event rows and survive
+schedule refreshes. Local PNG fallbacks cover ESPN, ESPN2, ESPNU, ESPNEWS, ESPN+,
+SEC Network, SEC+, ACC Network, ACC Extra, FS1, FS2, CBS Sports Network, and NFL
+Network. Exact aliases are mapped explicitly; other stations still use discovered
+logos or the generic fallback. Original asset URLs are recorded in
+`src/yttv_epg/static/station-logos/sources.json`. These broadcaster marks retain
+their original ownership.
+
+After updating, refresh this app's guide and then the YTTV Sports M3U source and
+XMLTV lineup in Channels DVR. Language preference changes rebuild app lanes
+immediately; Channels still needs a source refresh to import the revised guide.
+
+The report of completed events remaining in Live/New collections is **unconfirmed**.
+The current rule clears flags at the scheduled end, but inaccurate source times or
+cached DVR metadata may require a separate fix. To trace a report, provide a game
+title, displayed time, and the screen where it appears. Android title display also
+requires a manual check on the device.

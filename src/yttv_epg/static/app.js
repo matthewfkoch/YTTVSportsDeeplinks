@@ -277,6 +277,8 @@ function restoreChipState(snapshot) {
 }
 
 function applyOptimisticFilter(body) {
+  const languageToggle = document.getElementById("hide-spanish");
+  if (languageToggle && typeof body.hide_spanish === "boolean") languageToggle.checked = body.hide_spanish;
   if (body.toggle) {
     const button = document.querySelector(`#sport-chips [data-sport="${body.toggle}"]`);
     if (button) chipOn(button, button.classList.contains("off"));
@@ -320,7 +322,8 @@ function applyEventVisibility() {
     const hide =
       Boolean(query && !haystack.includes(query)) ||
       (sport && sports.has(sport)) ||
-      (channel && channels.has(channel));
+      (channel && channels.has(channel)) ||
+      (document.getElementById("hide-spanish")?.checked && row.dataset.language === "es");
     row.hidden = hide;
     if (!hide) shown += 1;
   });
@@ -336,6 +339,8 @@ function applyEventVisibility() {
 
 async function postFilter(body, message) {
   const previous = snapshotChipState();
+  const languageToggle = document.getElementById("hide-spanish");
+  const previousLanguage = typeof body.hide_spanish === "boolean" ? !body.hide_spanish : languageToggle?.checked;
   applyOptimisticFilter(body);
   applyEventVisibility();
   errorEl.textContent = "";
@@ -349,6 +354,7 @@ async function postFilter(body, message) {
     });
     if (!response.ok) {
       restoreChipState(previous);
+      if (languageToggle) languageToggle.checked = previousLanguage;
       applyEventVisibility();
       errorEl.textContent = await readError(response);
       hideToast();
@@ -362,6 +368,7 @@ async function postFilter(body, message) {
     hideToast();
   } catch (exc) {
     restoreChipState(previous);
+    if (languageToggle) languageToggle.checked = previousLanguage;
     applyEventVisibility();
     errorEl.textContent = exc.message || "Request failed";
     hideToast();
@@ -461,4 +468,13 @@ pollStatus();
 setInterval(pollStatus, 15000);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") pollStatus();
+});
+
+
+document.getElementById("hide-spanish")?.addEventListener("change", (event) => {
+  if (actionInFlight) {
+    event.target.checked = !event.target.checked;
+    return;
+  }
+  postFilter({ hide_spanish: event.target.checked }, "Updating broadcast language…");
 });

@@ -762,3 +762,54 @@ def test_feed_routes_use_startup_logo_overrides_and_subtitle_setting(tmp_path, m
         assert f'tvg-logo="{logo}"' in client.get("/playlist.m3u").text
         monkeypatch.setattr(app_module.settings, "xmltv_include_subtitle", True)
         assert ET.fromstring(client.get("/epg.xml").text).findtext("programme/sub-title") == "ESPN"
+
+
+def test_hide_spanish_rebuilds_lanes_feeds_and_playback(monkeypatch, tmp_path):
+    from datetime import datetime, timedelta, timezone
+    from yttv_epg import app as app_module
+    from yttv_epg.catalog import Catalog
+    from yttv_epg.parse import Airing
+
+    catalog = Catalog(tmp_path / "filters.sqlite")
+    monkeypatch.setattr(app_module.state, "catalog", catalog)
+    monkeypatch.setattr(app_module.state, "lane_assignments", None)
+    monkeypatch.setattr(app_module.state, "session", None)
+    now = datetime.now(timezone.utc)
+    def event(watch, title, language):
+        return Airing(watch,title,"ESPN+","event",now-timedelta(minutes=10),now+timedelta(hours=2),
+                      "https://tv.youtube.com/watch/"+watch,sport="Football",language=language)
+    spanish=event("abcdefghijk","En Español: Alabama at Georgia","es")
+    english=event("lmnopqrstuv","Alabama at Georgia","en")
+    unknown=event("zyxwvutsrqp","Kentucky at Tennessee","")
+    catalog.replace([spanish,english,unknown],[])
+    with TestClient(app) as client:
+        assert client.get('/api/filters').json()['hide_spanish'] is False
+        assert 'Hide Spanish broadcasts' in client.get('/').text
+        response=client.post('/api/filters',json={'hide_spanish':True})
+        assert response.status_code == 200
+        assert response.json()['events'] == 2
+        assert response.json()['hide_spanish'] is True
+        xml=client.get('/xmltv.xml').text
+        assert spanish.deeplink not in xml
+        assert english.deeplink in xml and unknown.deeplink in xml
+        assert all(row.airing.language != 'es' for row in app_module._labeled_assignments())
+        for row in app_module._labeled_assignments():
+            assert client.get(f'/whatson/{row.lane}').json()['deeplink_url'] != spanish.deeplink
+        home=client.get('/').text
+        assert 'data-language="es"' in home
+        assert catalog.hide_spanish()
+        assert client.post('/api/filters',json={'hide_spanish':'false'}).status_code == 400
+        assert client.post('/api/filters',json={'hide_spanish':False}).json()['events'] == 3
+        assert spanish.deeplink in client.get('/xmltv.xml').text
+    catalog._conn.close()
+
+
+def test_all_bundled_network_logos_are_served_as_png():
+    from yttv_epg.station_logos import BUNDLED_LOGOS
+
+    with TestClient(app) as client:
+        for name in set(BUNDLED_LOGOS.values()):
+            response = client.get(f'/static/station-logos/{name}.png')
+            assert response.status_code == 200
+            assert response.headers['content-type'].startswith('image/png')
+            assert response.content.startswith(b'\x89PNG\r\n\x1a\n')

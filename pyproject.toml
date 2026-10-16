@@ -1,6 +1,6 @@
 [project]
 name = "yttvsportsdeeplinks"
-version = "0.2.5"
+version = "0.2.6"
 description = "YouTube TV sports guide and deeplinks"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -34,7 +34,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-yttv_epg = ["templates/*", "static/*"]
+yttv_epg = ["templates/*", "static/*", "static/station-logos/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

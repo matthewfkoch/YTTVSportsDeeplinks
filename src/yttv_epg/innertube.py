@@ -10,6 +10,7 @@ import httpx
 
 from yttv_epg.chrome import ChromeError
 from yttv_epg.config import settings
+from yttv_epg.languages import broadcast_language
 from yttv_epg.parse import (
     Airing,
     discover_browse_tabs,
@@ -434,6 +435,7 @@ class InnerTubeClient:
                 channel=airing.channel or found.channel,
                 artwork=airing.artwork or found.artwork,
                 station_logo=keep_station_logo(airing, found).station_logo,
+                language=broadcast_language(airing) or broadcast_language(found),
             )
         return airing
 

@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Any, Iterable
 
+from yttv_epg.languages import broadcast_language
+
 MONTH_DAY_RE = re.compile(
     r"^(?:(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s+)?"
     r"(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|"
@@ -1029,11 +1031,14 @@ def visible_events(
     hidden_channels: Iterable[str] = (),
     *,
     require_watch_link: bool = False,
+    hide_spanish: bool = False,
 ) -> list[Any]:
     blocked_sports = {item for item in hidden if item}
     blocked_channels = {item for item in hidden_channels if item}
     visible: list[Any] = []
     for item in events:
+        if hide_spanish and broadcast_language(item) == "es":
+            continue
         if require_watch_link and not has_watch_link(item):
             continue
         title = getattr(item, "title", "") or ""

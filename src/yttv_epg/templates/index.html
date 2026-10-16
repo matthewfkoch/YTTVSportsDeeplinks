@@ -121,6 +121,7 @@
 
     <section class="card">
       <h2>Sports</h2>
+      <label><input id="hide-spanish" type="checkbox" {% if hide_spanish %}checked{% endif %}> Hide Spanish broadcasts</label>
       <p class="muted">Choose which sports appear in the guide. Event times use {{ time_zone }}.</p>
       {% if sports %}
       <div class="row filter-actions">
@@ -160,8 +161,9 @@
               data-event-row
               data-sport="{{ event.sport }}"
               data-channel="{{ event.channel }}"
+              data-language="{{ event.language }}"
               data-search="{{ event.search }}"
-              {% if event.sport in hidden_sports or event.channel in hidden_channels %}hidden{% endif %}
+              {% if event.sport in hidden_sports or event.channel in hidden_channels or (hide_spanish and event.language == "es") %}hidden{% endif %}
             >
               <td>{% if event.live %}<span class="live">LIVE</span> {% endif %}{{ event.clock }}</td>
               <td>{{ event.sport or "—" }}</td>

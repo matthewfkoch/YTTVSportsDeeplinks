@@ -235,3 +235,43 @@ def test_station_logo_migrates_and_round_trips(tmp_path):
     reopened = Catalog(path)
     assert reopened.events()[0].station_logo == logo
     reopened._conn.close()
+
+
+def test_station_cache_survives_event_replacement_and_restart(tmp_path):
+    from dataclasses import replace
+
+    path = tmp_path / "catalog.sqlite"
+    catalog = Catalog(path)
+    game = replace(_airing("Alabama at Georgia", datetime(2026,10,20,tzinfo=timezone.utc)),
+                   station="ESPN", station_logo="https://example.com/espn.png", language="es")
+    catalog.replace([game], pack_lanes([game], 1))
+    assert catalog.events()[0].language == "es"
+    catalog.replace([], [])
+    catalog._conn.close()
+    catalog = Catalog(path)
+    assert catalog.station_logos() == {"espn": game.station_logo}
+    assert "espn2" not in catalog.station_logos()
+    catalog.ensure_hide_spanish(True)
+    assert catalog.hide_spanish()
+    catalog.set_hide_spanish(False)
+    catalog.ensure_hide_spanish(True)
+    catalog._conn.close()
+    reopened = Catalog(path)
+    assert not reopened.hide_spanish()
+    reopened._conn.close()
+
+
+def test_language_column_migration_preserves_old_data(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "catalog.sqlite"
+    old = Catalog(path)
+    old.replace([_airing("Alabama at Georgia", datetime(2026,10,20,tzinfo=timezone.utc))], [])
+    old._conn.close()
+    with sqlite3.connect(path) as conn:
+        conn.execute("ALTER TABLE events DROP COLUMN language")
+        conn.execute("DROP TABLE station_logos")
+    migrated = Catalog(path)
+    assert migrated.events()[0].language == ""
+    assert not migrated.hide_spanish()
+    migrated._conn.close()
