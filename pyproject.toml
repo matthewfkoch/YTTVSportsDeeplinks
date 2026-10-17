@@ -1,6 +1,6 @@
 [project]
 name = "yttvsportsdeeplinks"
-version = "0.2.8"
+version = "0.2.9"
 description = "YouTube TV sports guide and deeplinks"
 readme = "README.md"
 license = { file = "LICENSE" }

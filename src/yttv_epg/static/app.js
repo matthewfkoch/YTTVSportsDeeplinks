@@ -15,9 +15,7 @@ const refreshBtn = document.getElementById("refresh-btn");
 const toastEl = document.getElementById("refresh-toast");
 const toastText = document.getElementById("refresh-toast-text");
 const sessionStatus = document.getElementById("session-status");
-const lastRefreshValue = document.getElementById("last-refresh-value");
 const searchEl = document.getElementById("event-search");
-const lastRefreshLabel = lastRefreshValue?.textContent || "—";
 
 const boot = {
   signedIn: document.body.dataset.signedIn === "true",
@@ -86,9 +84,6 @@ function paintSessionStatus(refreshing) {
 function setBackgroundUpdating(active) {
   if (guideBusy) return;
   paintSessionStatus(active);
-  if (lastRefreshValue) {
-    lastRefreshValue.textContent = active ? "Updating…" : lastRefreshLabel;
-  }
 }
 
 function restoreView() {
@@ -212,6 +207,8 @@ function dismissLoginDesktop() {
   const frame = document.getElementById("desktop-frame");
   if (frame) frame.removeAttribute("src");
   if (idleAuth) idleAuth.hidden = true;
+  const authCard = document.getElementById("auth-card");
+  if (authCard) authCard.hidden = true;
   if (signedAuth) signedAuth.hidden = false;
   if (errorEl) errorEl.textContent = "";
   boot.signedIn = true;

@@ -7,7 +7,7 @@
   <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
   <link rel="icon" type="image/png" href="/static/logo.png">
   <link rel="apple-touch-icon" href="/static/logo.png">
-  <link rel="stylesheet" href="/static/app.css?v=art-2">
+  <link rel="stylesheet" href="/static/app.css?v=dashboard-4">
 </head>
 <body
   data-signed-in="{{ 'true' if signed_in else 'false' }}"
@@ -22,32 +22,26 @@
       <div class="brand">
         <img class="brand-mark" src="/static/logo.svg" width="56" height="56" alt="">
         <div>
-          <p class="eyebrow">{{ eyebrow }}</p>
           <h1>{{ product_name }}</h1>
-          <p class="lede">YTTV sports events, published as XMLTV and tuner lanes with a watch link for each listing.</p>
+          <p class="lede">Your sports guide, ready to watch.</p>
         </div>
       </div>
-      <div id="session-status" class="status {{ 'err' if session_expired else 'ok' if signed_in else 'warn' }}">
-        {% if session_expired %}Session expired{% elif signed_in and refreshing %}Updating…{% elif signed_in %}Signed in{% else %}Not signed in{% endif %}
+      <div class="header-actions">
+        <div id="session-status" class="status {{ 'err' if session_expired else 'ok' if signed_in else 'warn' }}" role="status">
+          {% if session_expired %}Session expired{% elif signed_in and refreshing %}Updating…{% elif signed_in %}Signed in{% else %}Not signed in{% endif %}
+        </div>
+        <div id="signed-auth" {% if not signed_in %}hidden{% endif %}>
+          {% if not session_expired %}<button id="refresh-btn" type="button">Refresh guide</button>{% endif %}
+          <button id="logout-btn" class="secondary" type="button">Sign out</button>
+        </div>
       </div>
     </header>
 
-    <section class="card" id="auth-card">
-      <h2>Sign in</h2>
-      <div id="signed-auth" {% if not signed_in %}hidden{% endif %}>
-        {% if session_expired %}
-        <p class="muted">Cookies are still stored on this container, but YTTV rejected them. Sign in again below, or sign out to clear the saved session.</p>
-        <div class="row">
-          <button id="logout-btn" class="secondary" type="button">Sign out</button>
-        </div>
-        {% else %}
-        <p class="muted">Your YTTV session is stored on this container’s volume.</p>
-        <div class="row">
-          <button id="refresh-btn" type="button">Refresh guide</button>
-          <button id="logout-btn" class="secondary" type="button">Sign out</button>
-        </div>
-        {% endif %}
-      </div>
+    <section class="card" id="auth-card" {% if signed_in and not session_expired and not session_recovery_error %}hidden{% endif %}>
+      <h2>{% if session_expired %}Reconnect your account{% else %}Connect your account{% endif %}</h2>
+      {% if session_expired %}
+      <p class="muted">Cookies are still stored on this container, but the session has expired. Sign in again below, or sign out to clear the saved session.</p>
+      {% endif %}
       <div id="idle-auth" {% if signed_in and not session_expired %}hidden{% endif %}>
         <p class="muted">Use a <strong>dedicated YTTV Google account</strong> on <strong>tv.youtube.com</strong>—not the account you use for Gmail or other Google services. If Google sends you to youtube.com/tv or an update-package screen, this page will bounce the tab back to tv.youtube.com. The session is stored in this container.</p>
         {% if chrome_enabled %}
@@ -72,18 +66,20 @@
           <button id="import-btn" type="button">Import session</button>
         </details>
       </div>
-      <p class="error" id="auth-error">{% if session_expired or session_recovery_error %}{{ last_error }}{% endif %}</p>
     </section>
+    <p class="error" id="auth-error" role="alert">{% if session_expired or session_recovery_error %}{{ last_error }}{% endif %}</p>
 
-    <section class="grid">
+    <section class="grid overview" aria-label="Guide overview">
       <article class="card">
-        <h2>Guide</h2>
-        <dl>
+        <div class="section-heading overview-heading">
+          <h2>Guide</h2>
+          <p class="updated">Updated <span id="last-refresh-value">{{ last_refresh }}</span></p>
+        </div>
+        <dl class="guide-stats">
           <div><dt>Events</dt><dd id="event-count">{{ event_count }}</dd></div>
           <div><dt>All sports</dt><dd>{{ all_event_count }}</dd></div>
           <div><dt>Non-sports</dt><dd>{{ linear_count }}</dd></div>
           <div><dt>Tuner lanes</dt><dd>{{ lanes_used }} / {{ lane_count }}</dd></div>
-          <div><dt>Last updated</dt><dd id="last-refresh-value">{{ last_refresh }}</dd></div>
         </dl>
         {% if dropped_events %}<p class="error">{{ dropped_events }} overlapping events exceeded the lane count. Increase <code>LANE_COUNT</code>.</p>{% endif %}
         <p class="error" id="guide-error" {% if not last_error or session_expired %}hidden{% endif %}>{% if last_error and not session_expired %}{{ last_error }}{% endif %}</p>
@@ -91,12 +87,16 @@
       <article class="card">
         <h2>Feeds</h2>
         <ul class="links">
-          <li><a href="/xmltv.xml">XMLTV</a> — Channels DVR guide</li>
-          <li><a href="/playlist.m3u">M3U playlist</a></li>
-          <li><a href="/api/export">APITuner export</a></li>
-          <li><a href="/whatson/1">Lane 1 now</a></li>
+          <li><a href="/xmltv.xml">XMLTV <span>Channels DVR guide ↗</span></a></li>
+          <li><a href="/playlist.m3u">M3U <span>Channel playlist ↗</span></a></li>
+          <li><a href="/api/export">APITuner <span>Channel export ↗</span></a></li>
+          <li><a href="/whatson/1">Lane 1 <span>Watch now ↗</span></a></li>
         </ul>
-        <p class="muted">Import into APITuner from <code>{{ public_base_url }}/api/export</code>. Point Channels DVR XMLTV at <code>{{ public_base_url }}/xmltv.xml</code>.</p>
+        <details class="feed-setup">
+          <summary>Connection URLs</summary>
+          <p class="muted">APITuner <code>{{ public_base_url }}/api/export</code></p>
+          <p class="muted">Channels DVR <code>{{ public_base_url }}/xmltv.xml</code></p>
+        </details>
       </article>
     </section>
 
@@ -156,7 +156,14 @@
       {% for group in event_groups %}
       <section class="day-group" data-day-group>
         <h3>{{ group.heading }}</h3>
-        <table>
+        <table class="event-table">
+          <colgroup>
+            <col class="col-time">
+            <col class="col-sport">
+            <col>
+            <col class="col-channel">
+            <col class="col-watch">
+          </colgroup>
           <thead>
             <tr><th>Time</th><th>Sport</th><th>Event</th><th>Channel</th><th>Watch</th></tr>
           </thead>
@@ -170,9 +177,9 @@
               data-search="{{ event.search }}"
               {% if event.sport in hidden_sports or event.channel in hidden_channels or (hide_spanish and event.language == "es") %}hidden{% endif %}
             >
-              <td>{% if event.confirmed_live %}<span class="live">LIVE</span> {% elif event.on_now %}<span class="live">On now</span> {% endif %}{{ event.clock }}</td>
+              <td><div class="event-time"><span>{{ event.clock }}</span>{% if event.confirmed_live %}<span class="live">LIVE</span>{% elif event.on_now %}<span class="live">On now</span>{% endif %}</div></td>
               <td>{{ event.sport or "—" }}</td>
-              <td class="event-title">{% if event.artwork_secondary %}<span class="event-art pair{% if event.artwork_fallback %} fallback{% endif %}"><img src="{{ event.artwork }}" alt="" width="41" height="46" loading="lazy"><img src="{{ event.artwork_secondary }}" alt="" width="41" height="46" loading="lazy"></span>{% else %}<img class="event-art{% if event.artwork_fallback %} fallback{% endif %}" src="{{ event.artwork }}" alt="" width="96" height="54" loading="lazy">{% endif %}{{ event.title }}</td>
+              <td><div class="event-title">{% if event.artwork_secondary %}<span class="event-art pair{% if event.artwork_fallback %} fallback{% endif %}"><img src="{{ event.artwork }}" alt="" width="41" height="46" loading="lazy"><img src="{{ event.artwork_secondary }}" alt="" width="41" height="46" loading="lazy"></span>{% else %}<img class="event-art{% if event.artwork_fallback %} fallback{% endif %}" src="{{ event.artwork }}" alt="" width="96" height="54" loading="lazy">{% endif %}<span class="event-name">{{ event.title }}</span></div></td>
               <td>{{ event.station or event.channel or "—" }}</td>
               <td>
                 {% if event.deeplink %}

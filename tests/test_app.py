@@ -36,7 +36,7 @@ def test_dashboard_imports_cookies_not_a_password_or_oauth_form():
         assert "tv.youtube.com" in home.text
         assert "youtube.com/tv" in home.text
         assert "YouTube TV" not in home.text
-        assert "YTTV sports events" in home.text
+        assert "Your sports guide, ready to watch." in home.text
         assert "dedicated YTTV Google account" in home.text
         assert "Continue with Google" not in home.text
         assert 'type="password"' not in home.text
