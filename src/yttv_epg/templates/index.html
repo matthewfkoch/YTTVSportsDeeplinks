@@ -72,7 +72,7 @@
           <button id="import-btn" type="button">Import session</button>
         </details>
       </div>
-      <p class="error" id="auth-error">{% if session_expired %}{{ last_error }}{% endif %}</p>
+      <p class="error" id="auth-error">{% if session_expired or session_recovery_error %}{{ last_error }}{% endif %}</p>
     </section>
 
     <section class="grid">
@@ -165,7 +165,7 @@
               data-search="{{ event.search }}"
               {% if event.sport in hidden_sports or event.channel in hidden_channels or (hide_spanish and event.language == "es") %}hidden{% endif %}
             >
-              <td>{% if event.live %}<span class="live">LIVE</span> {% endif %}{{ event.clock }}</td>
+              <td>{% if event.confirmed_live %}<span class="live">LIVE</span> {% elif event.on_now %}<span class="live">On now</span> {% endif %}{{ event.clock }}</td>
               <td>{{ event.sport or "—" }}</td>
               <td class="event-title">{% if event.artwork_secondary %}<span class="event-art pair{% if event.artwork_fallback %} fallback{% endif %}"><img src="{{ event.artwork }}" alt="" loading="lazy"><img src="{{ event.artwork_secondary }}" alt="" loading="lazy"></span>{% else %}<img class="event-art{% if event.artwork_fallback %} fallback{% endif %}" src="{{ event.artwork }}" alt="" width="96" height="54" loading="lazy">{% endif %}{{ event.title }}</td>
               <td>{{ event.station or event.channel or "—" }}{% if event.channel and event.station and event.channel != event.station %}<div class="muted">{{ event.channel }}</div>{% endif %}</td>
@@ -193,6 +193,6 @@
     <span class="toast-spinner" aria-hidden="true"></span>
     <span id="refresh-toast-text">Refreshing the guide…</span>
   </div>
-  <script src="/static/app.js?v=session-13"></script>
+  <script src="/static/app.js?v={{ script_version }}"></script>
 </body>
 </html>

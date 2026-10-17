@@ -48,6 +48,8 @@ def test_xmltv_marks_programmes_sports_live_and_new():
         end=start + timedelta(hours=3),
         deeplink="https://tv.youtube.com/watch/football001",
         live=False,
+        broadcast_live=True,
+        first_run=True,
         sport="Football",
         channel="ESPN",
     )
@@ -60,6 +62,8 @@ def test_xmltv_marks_programmes_sports_live_and_new():
         end=start + timedelta(hours=6),
         deeplink="https://tv.youtube.com/watch/nosport0001",
         live=False,
+        broadcast_live=True,
+        first_run=True,
         sport="",
     )
     generic_sports = Airing(
@@ -71,6 +75,8 @@ def test_xmltv_marks_programmes_sports_live_and_new():
         end=start + timedelta(hours=9),
         deeplink="https://tv.youtube.com/watch/sports00001",
         live=False,
+        broadcast_live=True,
+        first_run=True,
         sport="Sports",
     )
     body = xmltv(
@@ -337,7 +343,7 @@ def test_xmltv_time_boundaries_and_optional_subtitle():
 
     now = datetime(2026, 10, 20, 20, tzinfo=timezone.utc)
     events = [
-        replace(_airing(), title=label, start=start, end=end, live=live)
+        replace(_airing(), title=label, start=start, end=end, live=live, broadcast_live=True, first_run=True)
         for label, start, end, live in [
             ("Past", now - timedelta(hours=3), now - timedelta(hours=1), True),
             ("Ended", now - timedelta(hours=1), now, True),

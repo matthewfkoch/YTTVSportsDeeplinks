@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -23,6 +24,7 @@ from yttv_epg.chrome import clear_browser_cookies, fetch_cookies
 from yttv_epg.chrome import innertube_post, keepalive_youtube_tv, open_youtube_tv, park_youtube_tv
 from yttv_epg.chrome import prune_chrome_profile, status as chrome_status
 from yttv_epg.config import settings
+from yttv_epg.resolution import unresolved_soon
 from yttv_epg.display import format_refresh, group_events_for_ui, local_tz
 from yttv_epg.espn_schedule import apply_espn_sports, fetch_espn_schedule
 from yttv_epg.feeds import apituner_export, m3u, whatson_payload, xmltv
@@ -45,6 +47,7 @@ from yttv_epg.sports import (
 
 ROOT = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(ROOT / "templates"))
+SCRIPT_VERSION = hashlib.sha256((ROOT / "static" / "app.js").read_bytes()).hexdigest()[:16]
 
 
 class State:
@@ -71,7 +74,10 @@ state = State()
 class AdminAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if not settings.admin_locked:
-            return await call_next(request)
+            response = await call_next(request)
+            if request.url.path in {"/", "/api/filters", "/api/status"}:
+                response.headers["Cache-Control"] = "no-store"
+            return response
         path = request.url.path
         if path == "/" or path.startswith("/api/auth") or path.startswith("/api/status") or path.startswith("/api/refresh") or path.startswith("/api/filters"):
             auth = request.headers.get("authorization", "")
@@ -80,9 +86,12 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
                 return Response(
                     "Authentication required",
                     status_code=401,
-                    headers={"WWW-Authenticate": 'Basic realm="YTTV Sports"'},
+                    headers={"WWW-Authenticate": 'Basic realm="YTTV Sports"', "Cache-Control": "no-store"},
                 )
-        return await call_next(request)
+        response = await call_next(request)
+        if request.url.path in {"/", "/api/filters", "/api/status"}:
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
 
 def _basic_header(user: str, password: str) -> str:
@@ -234,6 +243,7 @@ def _session_view(
     meta = meta if meta is not None else state.catalog.meta()
     last_error = for_ui(meta.get("last_error")) or ""
     signed_in = state.store.signed_in
+    last_error = getattr(state.store, "load_error", "") or last_error
     chrome = chrome or {}
     live = bool(chrome.get("signed_in") and chrome.get("on_app"))
     if live:
@@ -462,18 +472,7 @@ async def refresh_catalog() -> dict[str, Any]:
 
 
 def _unresolved_soon(events: list[Airing], *, within_hours: int = 36, limit: int = 80) -> list[Airing]:
-    now = datetime.now(timezone.utc)
-    cutoff = now + timedelta(hours=within_hours)
-    pending: list[Airing] = []
-    for item in events:
-        if item.watch_id() or not item.entity_id:
-            continue
-        if not item.live and item.start > cutoff:
-            continue
-        pending.append(item)
-        if len(pending) >= limit:
-            break
-    return pending
+    return unresolved_soon(events, within_hours=within_hours, limit=limit)
 
 
 async def refresh_watch_ids() -> dict[str, Any]:
@@ -623,6 +622,8 @@ async def dashboard(request: Request) -> HTMLResponse:
             "last_refresh": format_refresh(meta.get("last_refresh") or "", tz=zone),
             "last_refresh_at": meta.get("last_refresh") or "",
             "last_error": auth["last_error"] or "",
+            "session_recovery_error": getattr(state.store, "load_error", ""),
+            "script_version": SCRIPT_VERSION,
             "client": meta.get("last_client") or "",
             "browse_id": meta.get("last_browse_id") or "",
             "event_count": len(visible),
@@ -656,6 +657,7 @@ async def api_status() -> dict[str, Any]:
     return {
         "signed_in": auth["signed_in"],
         "session_expired": auth["session_expired"],
+        "hide_spanish": state.catalog.hide_spanish(),
         "last_refresh": meta.get("last_refresh"),
         "last_error": auth["last_error"],
         "refreshing": state.refreshing,

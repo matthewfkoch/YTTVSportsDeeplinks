@@ -135,9 +135,11 @@ Apache License 2.0. See [LICENSE](LICENSE).
 
 ## Channels DVR guide metadata
 
-Current and upcoming programmes include Sports, Live, and New metadata. Completed
-programmes remain in XMLTV, but Live and New are omitted once their scheduled end
-passes. This uses guide times, not final-score detection, and does not classify replays.
+All programmes include Sports metadata. Live and New now require separate
+programme-specific evidence and are omitted once the scheduled end passes.
+Confirmed repeats include previously-shown metadata and remain playable; unknown
+broadcasts receive no assumed Live or New flags. A linear stream being on air
+does not establish that a game is live or first-run.
 Channels must refresh its guide to receive updated flags.
 
 Network names are omitted from XMLTV subtitles by default so clients such as Android
@@ -202,8 +204,36 @@ After updating, refresh this app's guide and then the YTTV Sports M3U source and
 XMLTV lineup in Channels DVR. Language preference changes rebuild app lanes
 immediately; Channels still needs a source refresh to import the revised guide.
 
-The report of completed events remaining in Live/New collections is **unconfirmed**.
-The current rule clears flags at the scheduled end, but inaccurate source times or
-cached DVR metadata may require a separate fix. To trace a report, provide a game
-title, displayed time, and the screen where it appears. Android title display also
-requires a manual check on the device.
+The NFL Network Prime Vision report reproduced an unsupported Live/New assumption
+while a rebroadcast slot was on air. Unknown listings no longer receive those
+flags. This may remove actual live games from filtered collections when YouTube TV
+does not supply reliable programme status. Refresh only the YTTV Sports source and
+XMLTV lineup in Channels after upgrading to replace imported flags. Android title
+display still requires a manual check on the device.
+
+## Reliability and broadcast-status details
+
+The dashboard waits for filter-save acknowledgement before accepting background
+status responses or reloading. Failed saves restore the server-confirmed setting
+and display an error. Dashboard/status/filter responses are not cached, and the
+script URL changes when its content changes.
+
+`/events` includes nullable `broadcast_live`, `first_run`, and `is_repeat` fields.
+Missing evidence stays `null`, including existing rows after migration. Status is
+not inferred from scheduled times, station names, titles, or first discovery.
+Only direct programme badges are considered: explicit NEW or REPEAT/REPLAY/RERUN
+badges, and LIVE badges attached to event-specific sports game cards. A LIVE badge
+on a linear EPG listing, or a stream-level `isLive`, is not live-sports evidence.
+The NFL regression fixture is a captured normalized `/events` listing, not a raw
+YouTube response; its source first-run/replay fields were unavailable and remain
+unknown. This does not introduce score-based completion detection.
+
+Session files are saved atomically with restricted permissions. If a session is
+unreadable, the dashboard stays available with a recovery warning. Check the secret
+or sign in again. Before replacement, the encrypted original is saved as a
+restricted `session-recovery-*.enc` file in the data directory. These files contain
+sensitive encrypted session data and should remain in the persistent data volume.
+
+Watch-link resolution preserves playback parameters, ignores ended/invalid
+listings, and prioritizes active games followed by nearest upcoming games within
+the existing lookup window and limit.

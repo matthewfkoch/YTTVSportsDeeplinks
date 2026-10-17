@@ -31,6 +31,20 @@ const boot = {
 };
 
 let actionInFlight = false;
+let filterSavePending = false;
+let filterGeneration = 0;
+const languageToggle = document.getElementById("hide-spanish");
+let confirmedHideSpanish = Boolean(languageToggle?.defaultChecked);
+if (languageToggle) languageToggle.checked = confirmedHideSpanish;
+boot.hideSpanish = confirmedHideSpanish;
+
+function confirmLanguage(value) {
+  if (typeof value !== "boolean") return;
+  confirmedHideSpanish = value;
+  boot.hideSpanish = value;
+  if (languageToggle) languageToggle.checked = value;
+  applyEventVisibility();
+}
 let guideBusy = false;
 let reloading = false;
 
@@ -93,6 +107,7 @@ function restoreView() {
 }
 
 function reloadDashboard() {
+  if (filterSavePending) return;
   if (searchEl) sessionStorage.setItem(SEARCH_KEY, searchEl.value);
   sessionStorage.setItem(SCROLL_KEY, String(window.scrollY));
   window.location.reload();
@@ -338,9 +353,10 @@ function applyEventVisibility() {
 }
 
 async function postFilter(body, message) {
+  if (filterSavePending) return;
+  filterSavePending = true;
+  filterGeneration += 1;
   const previous = snapshotChipState();
-  const languageToggle = document.getElementById("hide-spanish");
-  const previousLanguage = typeof body.hide_spanish === "boolean" ? !body.hide_spanish : languageToggle?.checked;
   applyOptimisticFilter(body);
   applyEventVisibility();
   errorEl.textContent = "";
@@ -354,13 +370,14 @@ async function postFilter(body, message) {
     });
     if (!response.ok) {
       restoreChipState(previous);
-      if (languageToggle) languageToggle.checked = previousLanguage;
+      if (languageToggle) languageToggle.checked = confirmedHideSpanish;
       applyEventVisibility();
       errorEl.textContent = await readError(response);
       hideToast();
       return;
     }
     const data = await response.json();
+    confirmLanguage(data.hide_spanish);
     const countEl = document.getElementById("event-count");
     if (countEl && data.events != null) countEl.textContent = data.events;
     boot.events = String(data.events ?? boot.events);
@@ -368,11 +385,12 @@ async function postFilter(body, message) {
     hideToast();
   } catch (exc) {
     restoreChipState(previous);
-    if (languageToggle) languageToggle.checked = previousLanguage;
+    if (languageToggle) languageToggle.checked = confirmedHideSpanish;
     applyEventVisibility();
     errorEl.textContent = exc.message || "Request failed";
     hideToast();
   } finally {
+    filterSavePending = false;
     actionInFlight = false;
   }
 }
@@ -417,6 +435,7 @@ searchEl?.addEventListener("input", () => {
 function statusChanged(status) {
   const lastRefresh = status.last_refresh || "";
   const lastError = status.last_error || "";
+  if (typeof status.hide_spanish === "boolean" && status.hide_spanish !== boot.hideSpanish) return true;
   if (status.signed_in !== boot.signedIn) return true;
   if (Boolean(status.session_expired) !== boot.sessionExpired) {
     if (!(boot.loginDesktopDismissed && status.session_expired)) return true;
@@ -428,6 +447,7 @@ function statusChanged(status) {
 }
 
 function snapshotStatus(status) {
+  confirmLanguage(status.hide_spanish);
   boot.lastError = status.last_error || "";
   boot.lastRefresh = status.last_refresh || boot.lastRefresh;
   boot.events = String(status.events ?? boot.events);
@@ -439,6 +459,7 @@ function snapshotStatus(status) {
 
 async function pollStatus() {
   if (actionInFlight || reloading) return;
+  const generation = filterGeneration;
   let status;
   try {
     const response = await fetch("/api/status");
@@ -447,6 +468,7 @@ async function pollStatus() {
   } catch {
     return;
   }
+  if (actionInFlight || filterSavePending || reloading || generation !== filterGeneration) return;
   setBackgroundUpdating(Boolean(status.refreshing));
   if (!boot.primed) {
     snapshotStatus(status);
@@ -454,6 +476,7 @@ async function pollStatus() {
   }
   if (status.refreshing) return;
   if (statusChanged(status) && !(cookieDraftOpen() && !status.signed_in)) {
+    if (filterSavePending || generation !== filterGeneration) return;
     reloading = true;
     showToast("Guide updated. Reloading…");
     reloadDashboard();
@@ -473,7 +496,7 @@ document.addEventListener("visibilitychange", () => {
 
 document.getElementById("hide-spanish")?.addEventListener("change", (event) => {
   if (actionInFlight) {
-    event.target.checked = !event.target.checked;
+    event.target.checked = confirmedHideSpanish;
     return;
   }
   postFilter({ hide_spanish: event.target.checked }, "Updating broadcast language…");

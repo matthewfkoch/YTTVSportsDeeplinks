@@ -45,6 +45,9 @@ jobs:
         id: syntax
         run: python -m compileall -q src
 
+      - name: JavaScript regression tests
+        run: node --test tests/js/*.test.cjs
+
       - name: Tests
         id: tests
         run: pytest -q --junitxml=test-results.xml

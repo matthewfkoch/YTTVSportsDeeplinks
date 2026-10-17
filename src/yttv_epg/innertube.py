@@ -10,6 +10,8 @@ import httpx
 
 from yttv_epg.chrome import ChromeError
 from yttv_epg.config import settings
+from yttv_epg.broadcasts import merged_status
+from yttv_epg.resolution import unresolved_soon
 from yttv_epg.languages import broadcast_language
 from yttv_epg.parse import (
     Airing,
@@ -372,19 +374,7 @@ class InnerTubeClient:
         within_hours: int = 36,
         limit: int = 80,
     ) -> list:
-        now = datetime.now(timezone.utc)
-        cutoff = now + timedelta(hours=within_hours)
-        pending: list[Airing] = []
-        for item in airings:
-            if not isinstance(item, Airing):
-                continue
-            if item.watch_id() or not item.entity_id:
-                continue
-            if not item.live and item.start > cutoff:
-                continue
-            if len(pending) >= limit:
-                continue
-            pending.append(item)
+        pending = unresolved_soon(airings, within_hours=within_hours, limit=limit)
         if not pending:
             return [item for item in airings if isinstance(item, Airing)]
         resolved = await asyncio.gather(
@@ -427,10 +417,10 @@ class InnerTubeClient:
             if not watch:
                 continue
             return replace(
-                airing,
+                merged_status(airing, found),
                 video_id=watch,
                 title=airing.title or found.title,
-                deeplink=watch_deeplink(watch),
+                deeplink=found.deeplink or watch_deeplink(watch),
                 sport=airing.sport or found.sport,
                 channel=airing.channel or found.channel,
                 artwork=airing.artwork or found.artwork,

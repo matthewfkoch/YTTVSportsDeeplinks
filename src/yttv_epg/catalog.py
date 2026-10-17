@@ -92,6 +92,9 @@ class Catalog:
             self._conn.execute("ALTER TABLE events ADD COLUMN station_logo TEXT NOT NULL DEFAULT ''")
         if "language" not in cols:
             self._conn.execute("ALTER TABLE events ADD COLUMN language TEXT NOT NULL DEFAULT ''")
+        for column in ("broadcast_live", "first_run", "is_repeat"):
+            if column not in cols:
+                self._conn.execute(f"ALTER TABLE events ADD COLUMN {column} INTEGER")
         self._conn.execute("CREATE TABLE IF NOT EXISTS station_logos (station TEXT PRIMARY KEY, url TEXT NOT NULL)")
         self._remember_station_logos(self._conn, self.events())
         self._conn.commit()
@@ -175,8 +178,8 @@ class Catalog:
             self._remember_station_logos(cur, airings)
             cur.executemany(
                 """
-                INSERT INTO events(video_id, title, station, kind, start_ts, end_ts, deeplink, live, source, sport, entity_id, channel, artwork, artwork_secondary, station_logo, language)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO events(video_id, title, station, kind, start_ts, end_ts, deeplink, live, source, sport, entity_id, channel, artwork, artwork_secondary, station_logo, language, broadcast_live, first_run, is_repeat)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(video_id, start_ts) DO UPDATE SET
                     title = excluded.title,
                     station = excluded.station,
@@ -191,7 +194,10 @@ class Catalog:
                     artwork = excluded.artwork,
                     artwork_secondary = excluded.artwork_secondary,
                     station_logo = excluded.station_logo,
-                    language = excluded.language
+                    language = excluded.language,
+                    broadcast_live = excluded.broadcast_live,
+                    first_run = excluded.first_run,
+                    is_repeat = excluded.is_repeat
                 """,
                 [
                     self._row_values(item)
@@ -264,8 +270,8 @@ class Catalog:
                 )
                 cur.execute(
                     """
-                    INSERT INTO events(video_id, title, station, kind, start_ts, end_ts, deeplink, live, source, sport, entity_id, channel, artwork, artwork_secondary, station_logo, language)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO events(video_id, title, station, kind, start_ts, end_ts, deeplink, live, source, sport, entity_id, channel, artwork, artwork_secondary, station_logo, language, broadcast_live, first_run, is_repeat)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(video_id, start_ts) DO UPDATE SET
                         title = excluded.title,
                         station = excluded.station,
@@ -280,7 +286,10 @@ class Catalog:
                         artwork = excluded.artwork,
                         artwork_secondary = excluded.artwork_secondary,
                         station_logo = excluded.station_logo,
-                        language = excluded.language
+                        language = excluded.language,
+                        broadcast_live = excluded.broadcast_live,
+                        first_run = excluded.first_run,
+                        is_repeat = excluded.is_repeat
                     """,
                     self._row_values(resolved),
                 )
@@ -433,6 +442,9 @@ class Catalog:
             item.artwork_secondary,
             item.station_logo,
             broadcast_language(item),
+            item.broadcast_live,
+            item.first_run,
+            item.is_repeat,
         )
 
     def _row_to_airing(self, row: sqlite3.Row) -> Airing:
@@ -458,4 +470,6 @@ class Catalog:
             artwork_secondary=str(row["artwork_secondary"]) if "artwork_secondary" in keys else "",
             station_logo=str(row["station_logo"]) if "station_logo" in keys else "",
             language=str(row["language"]) if "language" in keys else "",
+            **{name: bool(row[name]) if name in keys and row[name] is not None else None
+               for name in ("broadcast_live", "first_run", "is_repeat")},
         )

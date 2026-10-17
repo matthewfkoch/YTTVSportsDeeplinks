@@ -275,3 +275,20 @@ def test_language_column_migration_preserves_old_data(tmp_path):
     assert migrated.events()[0].language == ""
     assert not migrated.hide_spanish()
     migrated._conn.close()
+
+
+def test_broadcast_status_roundtrip_and_migration_defaults_unknown(tmp_path):
+    from dataclasses import replace
+    import sqlite3
+    path=tmp_path/'broadcasts.sqlite';catalog=Catalog(path)
+    item=replace(_airing('Alabama at Georgia',datetime(2026,10,20,tzinfo=timezone.utc)),
+                 broadcast_live=True,first_run=False,is_repeat=False)
+    catalog.replace([item],pack_lanes([item],1))
+    loaded=catalog.assignments()[0].airing
+    assert (loaded.broadcast_live,loaded.first_run,loaded.is_repeat)==(True,False,False)
+    catalog._conn.close()
+    with sqlite3.connect(path) as conn:
+        for name in ('broadcast_live','first_run','is_repeat'):conn.execute(f'ALTER TABLE events DROP COLUMN {name}')
+    migrated=Catalog(path);loaded=migrated.events()[0]
+    assert loaded.broadcast_live is None and loaded.first_run is None and loaded.is_repeat is None
+    migrated._conn.close()

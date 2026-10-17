@@ -1,11 +1,30 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
 from yttv_epg.crypto import decrypt, encrypt, load_or_create_secret
+
+log = logging.getLogger(__name__)
+
+
+def _atomic_write(path: Path, data: bytes) -> None:
+    fd, name = tempfile.mkstemp(prefix=f".{path.name}-", dir=path.parent)
+    temporary = Path(name)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 @dataclass
@@ -32,25 +51,47 @@ class SessionStore:
         self.secret = load_or_create_secret(data_dir / ".secret", configured_secret)
         self.path = data_dir / "session.enc"
         self.legacy_path = data_dir / "token.enc"
+        self.load_error = ""
+        self._unreadable_path: Optional[Path] = None
 
     def load(self) -> Optional[SavedSession]:
         path = self.path if self.path.exists() else self.legacy_path
         if not path.exists():
             return None
-        raw = decrypt(self.secret, path.read_bytes())
-        data = json.loads(raw.decode("utf-8"))
-        if not isinstance(data, dict):
+        try:
+            raw = decrypt(self.secret, path.read_bytes())
+            data = json.loads(raw.decode("utf-8"))
+            session = SavedSession.from_dict(data) if isinstance(data, dict) else None
+            if session is None and path != self.legacy_path:
+                raise ValueError("Invalid session structure")
+        except (OSError, ValueError, UnicodeError):
+            if not self.load_error:
+                log.warning("Saved session could not be read; preserving it for recovery")
+            self.load_error = "Saved session could not be read. Check YTTV_EPG_SECRET or sign in again. The original file is preserved."
+            self._unreadable_path = path
             return None
-        session = SavedSession.from_dict(data)
         if session is None and path == self.legacy_path:
             # Old OAuth tokens cannot sign in to YouTube TV; drop them.
             path.unlink(missing_ok=True)
+        self.load_error = ""
+        self._unreadable_path = None
         return session
 
     def save(self, session: SavedSession) -> None:
         blob = encrypt(self.secret, json.dumps(session.to_dict()).encode("utf-8"))
-        self.path.write_bytes(blob)
-        self.path.chmod(0o600)
+        if self._unreadable_path is not None and self._unreadable_path.exists():
+            # Never overwrite an earlier recovery copy.
+            fd, name = tempfile.mkstemp(prefix="session-recovery-", suffix=".enc", dir=self.data_dir)
+            os.close(fd)
+            recovery = Path(name)
+            try:
+                _atomic_write(recovery, self._unreadable_path.read_bytes())
+            except Exception:
+                recovery.unlink(missing_ok=True)
+                raise
+        _atomic_write(self.path, blob)
+        self.load_error = ""
+        self._unreadable_path = None
         if self.legacy_path.exists():
             self.legacy_path.unlink()
 
@@ -58,6 +99,8 @@ class SessionStore:
         for path in (self.path, self.legacy_path):
             if path.exists():
                 path.unlink()
+        self.load_error = ""
+        self._unreadable_path = None
 
     @property
     def signed_in(self) -> bool:

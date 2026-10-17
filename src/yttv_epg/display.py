@@ -58,6 +58,8 @@ def event_for_ui(item: Airing, *, tz: ZoneInfo | None = None, now: datetime | No
     payload["when"] = format_when(item.start, now=now, tz=zone)
     payload["clock"] = format_clock(item.start, tz=zone)
     payload["day"] = format_day_heading(item.start, now=now, tz=zone)
+    payload["on_now"] = item.start <= (now or datetime.now(timezone.utc)) < item.end
+    payload["confirmed_live"] = payload["on_now"] and item.broadcast_live is True and item.is_repeat is not True
     payload["watchable"] = bool(item.watch_id())
     payload["channel"] = event_channel(item)
     payload["station"] = clean_station(item.station, item.title) or payload["channel"]

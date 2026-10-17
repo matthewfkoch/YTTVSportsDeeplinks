@@ -743,7 +743,7 @@ def test_feed_routes_use_startup_logo_overrides_and_subtitle_setting(tmp_path, m
     game = Airing("abcdefghijk", "Alabama at Kentucky", "ESPN", "event",
                   now - timedelta(minutes=10), now + timedelta(hours=2),
                   "https://tv.youtube.com/watch/abcdefghijk", sport="Football",
-                  station_logo="https://example.com/automatic.png")
+                  station_logo="https://example.com/automatic.png", broadcast_live=True, first_run=True)
     path = tmp_path / "logos.json"
     logo = "https://example.com/override.png?a=1&b=2"
     path.write_text(json.dumps({" Espn ": logo}))
@@ -813,3 +813,44 @@ def test_all_bundled_network_logos_are_served_as_png():
             assert response.status_code == 200
             assert response.headers['content-type'].startswith('image/png')
             assert response.content.startswith(b'\x89PNG\r\n\x1a\n')
+
+
+def test_dashboard_status_and_filters_are_uncached_and_script_is_versioned():
+    from yttv_epg.app import SCRIPT_VERSION
+    with TestClient(app) as client:
+        for path in ('/','/api/filters','/api/status'):
+            response=client.get(path)
+            assert response.headers['cache-control']=='no-store'
+        assert isinstance(client.get('/api/status').json()['hide_spanish'],bool)
+        assert f'/static/app.js?v={SCRIPT_VERSION}' in client.get('/').text
+
+
+def test_corrupt_session_leaves_dashboard_available_with_recovery_warning(tmp_path,monkeypatch):
+    from yttv_epg import app as module
+    from yttv_epg.session_store import SessionStore
+    store=SessionStore(tmp_path,'key');store.path.write_bytes(b'corrupt')
+    assert store.load() is None
+    monkeypatch.setattr(module.state,'store',store)
+    monkeypatch.setattr(module.state,'session',None)
+    with TestClient(app) as client:
+        response=client.get('/')
+        assert response.status_code==200
+        assert 'original file is preserved' in response.text
+        assert client.get('/api/status').json()['signed_in'] is False
+        assert store.path.read_bytes()==b'corrupt'
+
+
+def test_saved_spanish_preference_survives_catalog_refresh_and_dashboard_restart(tmp_path,monkeypatch):
+    import re
+    from yttv_epg import app as module
+    from yttv_epg.catalog import Catalog
+    catalog=Catalog(tmp_path/'saved-filter.sqlite');catalog.set_hide_spanish(True)
+    monkeypatch.setattr(module.state,'catalog',catalog)
+    monkeypatch.setattr(module.state,'lane_assignments',None)
+    for _ in range(2):
+        with TestClient(app) as client:
+            catalog.replace([],[])
+            html=client.get('/').text
+            assert re.search(r'id="hide-spanish"[^>]*checked',html)
+            assert client.get('/api/status').json()['hide_spanish'] is True
+    catalog._conn.close()

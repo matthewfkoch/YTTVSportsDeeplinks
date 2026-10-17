@@ -1,0 +1,15 @@
+{
+  "capture": "Normalized /events response; source first-run/replay metadata was unavailable",
+  "airing": {
+    "video_id": "WPuH0gnV73o",
+    "title": "Prime Vision Alt Cast: Seattle Seahawks at Denver Broncos",
+    "station": "NFL Network",
+    "kind": "event",
+    "sport": "Football",
+    "start": "2026-10-17T00:00:00+00:00",
+    "end": "2026-10-17T03:00:00+00:00",
+    "deeplink": "https://tv.youtube.com/watch/WPuH0gnV73o?vp=0gEEEgIwAQ%3D%3D",
+    "live": true,
+    "source": "WEB_UNPLUGGED:FEunplugged_epg"
+  }
+}

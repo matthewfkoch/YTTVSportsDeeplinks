@@ -116,10 +116,13 @@ def xmltv(
             lines.append(f"    <category>{_xml_text(sport)}</category>")
         if row.airing.channel:
             lines.append(f"    <category>{_xml_text(row.airing.channel)}</category>")
-        # Upcoming broadcasts need these flags too; expired listings do not.
-        if row.airing.end > now:
-            lines.append("    <live/>")
-            lines.append("    <new/>")
+        if row.airing.is_repeat is True:
+            lines.append("    <previously-shown/>")
+        elif row.airing.end > now:
+            if row.airing.broadcast_live is True:
+                lines.append("    <live/>")
+            if row.airing.first_run is True:
+                lines.append("    <new/>")
         if row.airing.deeplink:
             lines.append(f"    <url>{_xml_text(row.airing.deeplink)}</url>")
         icon_src = programme_icon(row.airing, base_url)
