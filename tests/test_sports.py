@@ -404,3 +404,40 @@ def test_linear_matchup_without_watch_is_upcoming_guide_row():
     assert is_upcoming_linear_matchup("ABC 7", "Arizona State at Texas A&M")
     assert not is_upcoming_linear_matchup("ESPN+", "Dickinson College vs. Davidson")
     assert not is_upcoming_linear_matchup("BTN Overflow 1", "Utah State at Washington")
+
+
+def test_individual_channel_filters_preserve_station_identity():
+    from types import SimpleNamespace
+    from yttv_epg.sports import event_channel
+
+    stations = ["ESPN", "ESPN2", "ESPNU", "ESPNEWS", "ESPN Unlimited",
+                "FS1", "FOX SPORTS 2", "FOX", "FOX 2", "ABC", "NBC",
+                "NBCSN", "CBS", "CBS Sports Network", "NBCSN Extra 1", "NBCSN Extra 2"]
+    rows = [SimpleNamespace(station=station, channel=infer_channel(station),
+                            title="UConn vs Maryland", sport="Football") for station in stations]
+    expected = ["ESPN", "ESPN2", "ESPNU", "ESPNEWS", "ESPN+", "FS1", "FS2",
+                "FOX", "FOX 2", "ABC", "NBC", "NBC Sports", "CBS", "CBS Sports",
+                "NBC Sports Extra 1", "NBC Sports Extra 2"]
+    assert [event_channel(row) for row in rows] == expected
+    assert len(channel_counts(rows)) == len(expected)
+    for name in expected:
+        assert [event_channel(row) for row in visible_events(rows, hidden_channels=[name])] == [
+            other for other in expected if other != name
+        ]
+    assert event_channel(SimpleNamespace(station="  Fox  Sports 1 ", channel="Fox Sports")) == "FS1"
+    assert event_channel(SimpleNamespace(station="ESPN", channel="ESPN+")) == "ESPN+"
+    assert event_channel(SimpleNamespace(station="Unknown", title="ESPN+ preview")) == "Unknown"
+
+
+def test_vix_filter_groups_feeds_without_changing_broadcaster():
+    from types import SimpleNamespace
+    from yttv_epg.sports import channel_filter, event_channel, event_filter_channel
+    rows = [SimpleNamespace(station=station, title="Chivas vs America", sport="Soccer")
+            for station in ("ViX Premium Deportes 1", "ViX Premium Deportes 13", "ViX", "FS1")]
+    assert [event_filter_channel(row) for row in rows] == ["ViX", "ViX", "ViX", "FS1"]
+    assert event_channel(rows[0]) == "ViX Premium Deportes 1"
+    assert channel_counts(rows) == [{"name": "ViX", "count": 3}, {"name": "FS1", "count": 1}]
+    assert visible_events(rows, hidden_channels=["ViX"]) == rows[-1:]
+    assert visible_events(rows, hidden_channels=["ViX Premium Deportes 1"]) == rows[-1:]
+    assert channel_filter("  vix   premium deportes 2 ") == "ViX"
+    assert channel_filter("ViXtra") == "ViXtra"

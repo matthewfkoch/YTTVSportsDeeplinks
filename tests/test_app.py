@@ -854,3 +854,60 @@ def test_saved_spanish_preference_survives_catalog_refresh_and_dashboard_restart
             assert re.search(r'id="hide-spanish"[^>]*checked',html)
             assert client.get('/api/status').json()['hide_spanish'] is True
     catalog._conn.close()
+
+
+def test_independent_channel_filters_update_dashboard_and_feeds(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from xml.etree import ElementTree as ET
+    from yttv_epg import app as app_module
+    from yttv_epg.catalog import Catalog
+    from yttv_epg.parse import Airing
+
+    now = datetime.now(timezone.utc)
+    catalog = Catalog(tmp_path / "independent.sqlite")
+    events = [
+        Airing("abcdefghij" + str(index), title, station, "event",
+               now - timedelta(minutes=5), now + timedelta(hours=2),
+               "https://tv.youtube.com/watch/abcdefghij" + str(index),
+               sport="Football", channel=channel)
+        for index, (title, station, channel) in enumerate([
+            ("Michigan vs Ohio State", "FOX SPORTS 1", "Fox Sports"),
+            ("UConn vs Maryland", "FS2", "Fox Sports"),
+            ("Alabama vs Georgia", "ESPN2", "ESPN"),
+            ("Western Michigan vs Central Michigan", "ESPN Unlimited", "ESPN"),
+            ("Chivas vs America", "ViX Premium Deportes 1", "ViX Premium Deportes 1"),
+            ("Pumas vs Tigres", "ViX Premium Deportes 2", "ViX Premium Deportes 2"),
+        ])
+    ]
+    catalog.replace(events, [])
+    monkeypatch.setattr(app_module.state, "catalog", catalog)
+    with TestClient(app) as client:
+        names = {item["name"] for item in client.get("/api/filters").json()["channels"]}
+        assert names == {"FS1", "FS2", "ESPN2", "ESPN+", "ViX"}
+        result = client.post("/api/filters", json={"toggle_channel": "FS1"})
+        assert result.json()["hidden_channels"] == ["FS1"]
+        home = client.get("/").text
+        assert 'data-channel="FS2"' in home
+        assert 'data-channel="ESPN2"' in home
+        xml = ET.fromstring(client.get("/xmltv.xml").text)
+        titles = [row.findtext("title") for row in xml.findall("programme")]
+        assert "Michigan vs Ohio State" not in titles
+        assert "UConn vs Maryland" in titles
+        assert "Alabama vs Georgia" in titles
+        playlist = client.get("/playlist.m3u").text
+        assert "/static/station-logos/fs1.png" not in playlist
+        assert "/static/station-logos/fs2.png" in playlist
+        assert "/static/station-logos/espn-plus.png" in playlist
+        client.post("/api/filters", json={"toggle_channel": "FS1"})
+        assert catalog.hidden_channels() == []
+        assert "Michigan vs Ohio State" in client.get("/xmltv.xml").text
+        assert "ViX · 2" in client.get("/").text
+        assert 'data-channel="ViX Premium Deportes 1"' not in client.get("/").text
+        hidden_vix = client.post("/api/filters", json={"toggle_channel": "ViX"})
+        assert hidden_vix.json()["hidden_channels"] == ["ViX"]
+        guide = client.get("/xmltv.xml").text
+        assert "Chivas vs America" not in guide
+        assert "Pumas vs Tigres" not in guide
+        assert "Michigan vs Ohio State" in guide
+        client.post("/api/filters", json={"toggle_channel": "ViX"})
+        assert "Chivas vs America" in client.get("/xmltv.xml").text

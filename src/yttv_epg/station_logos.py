@@ -49,7 +49,7 @@ BUNDLED_LOGOS = {
     "acc network": "acc-network", "accn": "acc-network", "acc extra": "acc-extra",
     "acc network extra": "acc-extra", "accnx": "acc-extra",
     "fs1": "fs1", "fox sports 1": "fs1", "fs2": "fs2", "fox sports 2": "fs2",
-    "cbs sports network": "cbs-sports-network", "cbssn": "cbs-sports-network",
+    "cbs sports": "cbs-sports-network", "cbs sports network": "cbs-sports-network", "cbssn": "cbs-sports-network",
     "nfl network": "nfl-network",
 }
 

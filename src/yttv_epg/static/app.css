@@ -99,6 +99,63 @@ th, td { text-align: left; padding: 0.45rem 0.3rem; border-bottom: 1px solid var
 code { background: #10141c; padding: 0.1rem 0.35rem; border-radius: 6px; }
 .chips { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.75rem; }
 .filter-actions { margin-top: 0.75rem; }
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+}
+.section-heading h2 { margin: 0; }
+.broadcast-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 44px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.broadcast-toggle:hover { color: var(--text); }
+.broadcast-toggle input {
+  appearance: none;
+  position: relative;
+  flex: 0 0 auto;
+  width: 2.5rem;
+  height: 1.4rem;
+  margin: 0;
+  border: 1px solid var(--muted);
+  border-radius: 999px;
+  background: var(--line);
+  cursor: pointer;
+}
+.broadcast-toggle input::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: calc(1.4rem - 8px);
+  height: calc(1.4rem - 8px);
+  border-radius: 50%;
+  background: var(--text);
+  transition: transform 160ms ease;
+}
+.broadcast-toggle input:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.broadcast-toggle input:checked::before {
+  background: var(--bg);
+  transform: translateX(1.1rem);
+}
+.broadcast-toggle input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .broadcast-toggle input::before { transition: none; }
+}
 .chip {
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -147,7 +204,8 @@ code { background: #10141c; padding: 0.1rem 0.35rem; border-radius: 6px; }
 }
 .event-art.pair {
   display: inline-grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
   align-items: center;
   justify-items: center;
   gap: 2px;
@@ -156,8 +214,12 @@ code { background: #10141c; padding: 0.1rem 0.35rem; border-radius: 6px; }
   overflow: hidden;
 }
 .event-art.pair img {
+  display: block;
+  min-width: 0;
+  min-height: 0;
   width: 100%;
   height: 100%;
+  max-width: 100%;
   max-height: 46px;
   object-fit: contain;
   object-position: center;

@@ -13,6 +13,7 @@ from yttv_epg.parse import Airing
 from yttv_epg.sports import (
     MATCHUP_AT_RE,
     MATCHUP_VS_RE,
+    channel_identity,
     infer_sport,
     is_espn_plus,
     is_studio_show,
@@ -29,7 +30,7 @@ AIRINGS_QUERY = (
     "query Airings($countryCode:String!,$deviceType:DeviceType!,$tz:String!,"
     "$type:AiringType,$day:String,$limit:Int){"
     "airings(countryCode:$countryCode,deviceType:$deviceType,tz:$tz,type:$type,day:$day,limit:$limit){"
-    "name startDateTime endDateTime program{isStudio} sport{name} league{name} "
+    "name startDateTime endDateTime network{name} program{isStudio} sport{name} league{name} "
     "category{name} subcategory{name}"
     "}}"
 )
@@ -146,6 +147,7 @@ class EspnListing:
     sport: str
     start: Optional[datetime] = None
     league: str = ""
+    network: str = ""
 
     def teams(self) -> Optional[frozenset[str]]:
         return matchup_teams(self.name)
@@ -200,7 +202,7 @@ def parse_airings_payload(payload: Any) -> list[EspnListing]:
             continue
         teams = listing.teams()
         start_ts = int(listing.start.timestamp()) if listing.start else 0
-        key = (teams or listing.name, listing.sport, start_ts)
+        key = (teams or listing.name, listing.sport, start_ts, listing.network)
         if key in seen:
             continue
         seen.add(key)
@@ -226,7 +228,7 @@ def _dedupe_listings(listings: Iterable[EspnListing]) -> list[EspnListing]:
     for item in listings:
         teams = item.teams()
         start_ts = int(item.start.timestamp()) if item.start else 0
-        key = (teams or item.name, item.sport, start_ts)
+        key = (teams or item.name, item.sport, start_ts, item.network)
         if key in seen:
             continue
         seen.add(key)
@@ -268,12 +270,22 @@ def apply_espn_sports(
     airings: Iterable[Airing],
     listings: Iterable[EspnListing],
 ) -> list[Airing]:
+    listings = list(listings)
     indexed = _index_listings(listings)
     labeled: list[Airing] = []
     for item in airings:
         listing = _listing_for_matchup(item, indexed)
         sport = espn_sport_for(item, indexed)
         updates: dict[str, Any] = {}
+        # Broadcaster corrections require an exact normalized title, a close
+        # kickoff, and unanimous ESPN+ evidence. Matchup-only sport inference is
+        # deliberately more permissive and cannot establish the broadcaster.
+        if channel_identity(item.station) == "ESPN":
+            matches = [row for row in listings
+                       if row.start and abs(row.start - item.start) <= timedelta(minutes=5)
+                       and norm_name(row.name) == norm_name(item.title)]
+            if matches and all(channel_identity(row.network) == "ESPN+" for row in matches):
+                updates.update(station="ESPN+", channel="ESPN+", station_logo="")
         if sport and sport != item.sport:
             updates["sport"] = sport
         if listing and listing.start and _placeholder_kickoff(item.start):
@@ -417,6 +429,7 @@ def _listing_from_row(row: dict[str, Any]) -> Optional[EspnListing]:
         sport=sport,
         start=_parse_dt(row.get("startDateTime")),
         league=_nested_name(row.get("league")),
+        network=_nested_name(row.get("network")),
     )
 
 

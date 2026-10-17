@@ -12,6 +12,7 @@ from yttv_epg.broadcasts import merged_status, programme_badges
 from yttv_epg.languages import broadcast_language, detect_language, language_code
 from yttv_epg.sports import (
     clean_station,
+    channel_identity,
     infer_channel,
     infer_sport,
     is_digital_extra,
@@ -278,6 +279,10 @@ def _better_airing(candidate: Airing, current: Airing) -> bool:
 
 
 def _keep_merged_fields(winner: Airing, other: Airing) -> Airing:
+    # A game card can identify ESPN+ while the EPG labels the very same
+    # stream as ESPN. Preserve the more specific service without changing links.
+    if channel_identity(winner.station) == "ESPN" and channel_identity(other.station) == "ESPN+":
+        winner = replace(winner, station="ESPN+", channel="ESPN+", station_logo=other.station_logo)
     merged = keep_artwork(winner, other)
     if (
         "?vp=" not in merged.deeplink

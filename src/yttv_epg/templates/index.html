@@ -7,7 +7,7 @@
   <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
   <link rel="icon" type="image/png" href="/static/logo.png">
   <link rel="apple-touch-icon" href="/static/logo.png">
-  <link rel="stylesheet" href="/static/app.css?v=art-1">
+  <link rel="stylesheet" href="/static/app.css?v=art-2">
 </head>
 <body
   data-signed-in="{{ 'true' if signed_in else 'false' }}"
@@ -120,8 +120,13 @@
     </section>
 
     <section class="card">
-      <h2>Sports</h2>
-      <label><input id="hide-spanish" type="checkbox" {% if hide_spanish %}checked{% endif %}> Hide Spanish broadcasts</label>
+      <div class="section-heading">
+        <h2>Sports</h2>
+        <label class="broadcast-toggle">
+          <span>Hide Spanish broadcasts</span>
+          <input id="hide-spanish" type="checkbox" role="switch" {% if hide_spanish %}checked{% endif %}>
+        </label>
+      </div>
       <p class="muted">Choose which sports appear in the guide. Event times use {{ time_zone }}.</p>
       {% if sports %}
       <div class="row filter-actions">
@@ -167,8 +172,8 @@
             >
               <td>{% if event.confirmed_live %}<span class="live">LIVE</span> {% elif event.on_now %}<span class="live">On now</span> {% endif %}{{ event.clock }}</td>
               <td>{{ event.sport or "—" }}</td>
-              <td class="event-title">{% if event.artwork_secondary %}<span class="event-art pair{% if event.artwork_fallback %} fallback{% endif %}"><img src="{{ event.artwork }}" alt="" loading="lazy"><img src="{{ event.artwork_secondary }}" alt="" loading="lazy"></span>{% else %}<img class="event-art{% if event.artwork_fallback %} fallback{% endif %}" src="{{ event.artwork }}" alt="" width="96" height="54" loading="lazy">{% endif %}{{ event.title }}</td>
-              <td>{{ event.station or event.channel or "—" }}{% if event.channel and event.station and event.channel != event.station %}<div class="muted">{{ event.channel }}</div>{% endif %}</td>
+              <td class="event-title">{% if event.artwork_secondary %}<span class="event-art pair{% if event.artwork_fallback %} fallback{% endif %}"><img src="{{ event.artwork }}" alt="" width="41" height="46" loading="lazy"><img src="{{ event.artwork_secondary }}" alt="" width="41" height="46" loading="lazy"></span>{% else %}<img class="event-art{% if event.artwork_fallback %} fallback{% endif %}" src="{{ event.artwork }}" alt="" width="96" height="54" loading="lazy">{% endif %}{{ event.title }}</td>
+              <td>{{ event.station or event.channel or "—" }}</td>
               <td>
                 {% if event.deeplink %}
                 <a href="{{ event.deeplink }}">Watch</a>

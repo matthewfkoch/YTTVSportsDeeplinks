@@ -292,3 +292,57 @@ def test_broadcast_status_roundtrip_and_migration_defaults_unknown(tmp_path):
     migrated=Catalog(path);loaded=migrated.events()[0]
     assert loaded.broadcast_live is None and loaded.first_run is None and loaded.is_repeat is None
     migrated._conn.close()
+
+
+def test_channel_filter_migration_preserves_exclusions_once(tmp_path):
+    from dataclasses import replace
+    path = tmp_path / "migration.sqlite"
+    catalog = Catalog(path)
+    event = replace(_airing("UConn vs Maryland", datetime(2026, 10, 17, tzinfo=timezone.utc)),
+                    station="FOX 2", channel="FOX")
+    catalog.replace([event], [])
+    catalog.set_hidden_channels(["ESPN", "Fox Sports", "FOX"])
+    catalog.migrate_channel_filters()
+    assert {"ESPN", "ESPN2", "ESPNU", "ESPNEWS", "ESPN Deportes", "FS1", "FS2", "FOX 2"} <= set(catalog.hidden_channels())
+    assert "ESPN+" not in catalog.hidden_channels()
+    catalog.set_hidden_channels(["ESPN2", "FS2"])
+    reopened = Catalog(path)
+    reopened.migrate_channel_filters()
+    assert reopened.hidden_channels() == ["ESPN2", "FS2"]
+    assert reopened.meta()["channel_filter_version"] == "2"
+
+
+def test_explicit_channel_metadata_survives_catalog_reload(tmp_path):
+    from dataclasses import replace
+    from yttv_epg.sports import event_channel
+    event = replace(_airing("UConn vs Princeton", datetime(2026, 10, 17, tzinfo=timezone.utc)),
+                    station="ESPN", channel="ESPN+", station_logo="https://example.com/espn.png")
+    catalog = Catalog(tmp_path / "channel.sqlite")
+    catalog.replace([event], [])
+    assert event_channel(catalog.events()[0]) == "ESPN+"
+    assert "espn" not in catalog.station_logos()
+
+
+def test_schedule_broadcaster_correction_persists(tmp_path):
+    from yttv_epg.espn_schedule import EspnListing, apply_espn_sports
+    game = _airing("#8 UConn vs. #7 Princeton", datetime(2026, 10, 17, 19, tzinfo=timezone.utc))
+    game.station = game.channel = "ESPN"
+    game.station_logo = "https://example.com/espn.png"
+    catalog = Catalog(tmp_path / "enrichment.sqlite")
+    catalog.replace([game], [])
+    catalog.update_sports(apply_espn_sports([game], [EspnListing(game.title, "Hockey", game.start, network="ESPN+")]))
+    stored = catalog.events()[0]
+    assert stored.station == stored.channel == "ESPN+"
+    assert stored.station_logo == ""
+    assert stored.sport == "Hockey"
+
+
+def test_saved_vix_exclusions_collapse_and_can_be_reenabled(tmp_path):
+    import json
+    path = tmp_path / "vix.sqlite"
+    catalog = Catalog(path)
+    catalog._set_meta("hidden_channels", json.dumps(["ViX Premium Deportes 1", "ViX Premium Deportes 7", "FS2"]))
+    catalog._conn.commit()
+    assert catalog.hidden_channels() == ["FS2", "ViX"]
+    catalog.set_hidden_channels(["FS2"])
+    assert Catalog(path).hidden_channels() == ["FS2"]

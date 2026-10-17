@@ -1043,3 +1043,34 @@ def test_merge_station_logo_does_not_cross_broadcasters():
     foreign = replace(donor, station="ESPN2")
     assert keep_artwork(winner, foreign).station_logo == ""
     assert merge_airings([winner, foreign])[0].station_logo == ""
+
+
+def test_reported_espn_plus_game_keeps_service_when_epg_and_card_merge():
+    from yttv_epg.parse import merge_airings
+    from yttv_epg.feeds import lane_logos
+    from yttv_epg.lanes import LaneAssignment
+    epg = {"epgAiringRenderer": {
+        "title": {"simpleText": "Western Michigan vs. Central Michigan"},
+        "stationName": "ESPN", "beginTimeMs": "1792258205000", "endTimeMs": "1792269000000",
+        "navigationEndpoint": {"watchEndpoint": {"videoId": "vQpF9nOHDqI", "params": "live"}},
+    }}
+    card = {"unpluggedVideoRenderer": {
+        "primaryText": {"simpleText": "Western Michigan vs. Central Michigan"},
+        "secondaryText": {"simpleText": "ESPN+"},
+        "startTimeSeconds": "1792258205", "endTimeSeconds": "1792269000",
+        "navigationEndpoint": {"watchEndpoint": {"videoId": "vQpF9nOHDqI"}},
+    }}
+    linear = parse_browse(epg)[0]
+    linear.station_logo = "https://example.com/espn.png"
+    extra = parse_browse(card)[0]
+    for rows in ([linear, extra], [extra, linear]):
+        merged = merge_airings(rows)
+        assert len(merged) == 1
+        game = merged[0]
+        assert game.station == game.channel == "ESPN+"
+        assert game.station_logo == ""
+        assert "?vp=live" in game.deeplink
+        assert lane_logos([LaneAssignment(1, game)], 1, "http://localhost", game.start)[1].endswith("/espn-plus.png")
+    # A different linear simulcast remains ESPN; service evidence is stream-specific.
+    from dataclasses import replace
+    assert merge_airings([replace(linear, video_id="abcdefghijk"), extra])[0].station == "ESPN"

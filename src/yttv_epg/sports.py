@@ -605,17 +605,63 @@ def _channel_hint_match(padded: str, hint: str) -> bool:
     return False
 
 
+# Filter identities are exact aliases; infer_channel retains network families.
+CHANNEL_ALIASES = {
+    "ES": "ESPN+", "ESPN PLUS": "ESPN+", "ESPN UNLIMITED": "ESPN+",
+    "ES • ESPN+": "ESPN+", "FOX SPORTS 1": "FS1", "FOX SPORTS 2": "FS2",
+    "NBCSN": "NBC Sports", "NBC SPORTS NETWORK": "NBC Sports",
+    "CBS SPORTS NETWORK": "CBS Sports", "CBSSN": "CBS Sports",
+    "ACCN": "ACC Network", "SECN": "SEC Network", "BTN": "Big Ten",
+    "BIG TEN NETWORK": "Big Ten", "ACC NETWORK EXTRA": "ACC Extra",
+    "ACCNX": "ACC Extra", "ACC+": "ACC Extra", "SEC PLUS": "SEC+",
+    "SEC NETWORK+": "SEC+", "SEC NETWORK +": "SEC+", "SEC NETWORK PLUS": "SEC+",
+    "NFL RED ZONE": "NFL RedZone",
+}
+for _label in (
+    "ESPN", "ESPN2", "ESPNU", "ESPNEWS", "ESPN Deportes", "ESPN+",
+    "FS1", "FS2", "FOX", "ABC", "NBC", "CBS", "NBC Sports", "CBS Sports",
+    "ACC Network", "SEC Network", "Big Ten", "ACC Extra", "SEC+",
+    "NFL Network", "NFL RedZone", "NBA TV", "MLB Network", "NHL Network",
+    "NBC Sports Extra", "Fox Sports Extra", "CBS Sports Extra", "Big Ten Extra",
+):
+    CHANNEL_ALIASES[norm_name(_label)] = _label
+
+
+def channel_identity(value: str) -> str:
+    label = clean_station(value)
+    normalized = norm_name(label)
+    if normalized in CHANNEL_ALIASES:
+        return CHANNEL_ALIASES[normalized]
+    extra = re.fullmatch(r"(NBCSN EXTRA|NBC SPORTS EXTRA|BTN OVERFLOW|BIG TEN EXTRA)( \d+)?", normalized)
+    if extra:
+        prefix = "NBC Sports Extra" if extra[1].startswith("NBC") else "Big Ten Extra"
+        return prefix + (extra[2] or "")
+    return label
+
+
 def event_channel(item: Any) -> str:
     title = getattr(item, "title", "") or ""
-    station = clean_station(getattr(item, "station", "") or "", title)
-    channel = getattr(item, "channel", "") or ""
-    if channel in {"Other", "Other extras"} or is_unusable_channel_label(channel) or is_studio_show(channel):
+    station = channel_identity(getattr(item, "station", "") or "")
+    raw_channel = getattr(item, "channel", "") or ""
+    channel = channel_identity(raw_channel)
+    if raw_channel == title or channel in {"Other", "Other extras"}:
         channel = ""
-    if channel and channel == title:
-        channel = ""
-    if channel:
-        return infer_channel(channel, title) or channel
-    return infer_channel(station, title)
+    # Explicit service metadata beats an inferred ESPN family label.
+    if station == "ESPN" and channel == "ESPN+":
+        return channel
+    return station or channel
+
+
+def channel_filter(value: str) -> str:
+    """Group ViX feeds for selection while retaining their broadcaster identity."""
+    identity = channel_identity(value)
+    if re.fullmatch(r"V[IÍ]X(?: PREMIUM)?(?: DEPORTES)?(?: \d+)?", norm_name(identity)):
+        return "ViX"
+    return identity
+
+
+def event_filter_channel(item: Any) -> str:
+    return channel_filter(event_channel(item))
 
 
 def is_vs_matchup(title: str) -> bool:
@@ -1034,7 +1080,7 @@ def visible_events(
     hide_spanish: bool = False,
 ) -> list[Any]:
     blocked_sports = {item for item in hidden if item}
-    blocked_channels = {item for item in hidden_channels if item}
+    blocked_channels = {channel_filter(item) for item in hidden_channels if item}
     visible: list[Any] = []
     for item in events:
         if hide_spanish and broadcast_language(item) == "es":
@@ -1051,7 +1097,7 @@ def visible_events(
         sport = getattr(item, "sport", None) or "Other"
         if sport in blocked_sports:
             continue
-        if event_channel(item) in blocked_channels:
+        if event_filter_channel(item) in blocked_channels:
             continue
         visible.append(item)
     return visible
@@ -1069,7 +1115,7 @@ def sport_counts(events: Iterable[Any]) -> list[dict[str, int | str]]:
 
 
 def channel_counts(events: Iterable[Any]) -> list[dict[str, int | str]]:
-    counts = Counter(name for name in (event_channel(item) for item in events) if name)
+    counts = Counter(name for name in (event_filter_channel(item) for item in events) if name)
     return [{"name": name, "count": count} for name, count in sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))]
 
 

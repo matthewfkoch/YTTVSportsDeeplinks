@@ -37,6 +37,7 @@ from yttv_epg.session_store import SavedSession, SessionStore
 from yttv_epg.station_logos import load_station_logos
 from yttv_epg.sports import (
     channel_counts,
+    channel_filter,
     is_non_sports_station,
     is_sports_event,
     is_upcoming_linear_matchup,
@@ -550,6 +551,7 @@ async def lifespan(_app: FastAPI):
     prune_chrome_profile(settings.chrome_profile_dir, cap_cache=True)
     state.catalog.ensure_hidden_sports(settings.hidden_sports_list)
     state.catalog.ensure_hidden_channels(settings.hidden_channels_list)
+    state.catalog.migrate_channel_filters()
     state.catalog.ensure_hide_spanish(settings.hide_spanish)
     visible = _visible_events()
     _store_lanes(
@@ -770,9 +772,10 @@ async def set_filters(request: Request) -> dict[str, Any]:
         hidden = toggle_name(hidden, toggle)
     toggle_channel = str(body.get("toggle_channel") or "").strip()
     if toggle_channel:
-        hidden_channels = toggle_name(hidden_channels, toggle_channel)
+        hidden_channels = toggle_name(hidden_channels, channel_filter(toggle_channel))
     state.catalog.set_hidden_sports(hidden)
     state.catalog.set_hidden_channels(hidden_channels)
+    hidden_channels = state.catalog.hidden_channels()
     visible = _visible_events(None, hidden, hidden_channels)
     watchable = _watchable_events()
     _store_lanes(

@@ -148,8 +148,8 @@ subtitles. The network is always included in the programme description.
 
 M3U `tvg-logo` and XMLTV channel icons use the current event's broadcaster, or the
 next watchable event's broadcaster during a gap. Logo priority is: user override,
-the selected event's station metadata, a persisted logo for the exact station,
-a bundled broadcaster fallback, then the generic project logo. Event thumbnails remain separate. Refresh both the
+the selected event's station metadata when it matches the resolved broadcaster,
+a persisted logo for that broadcaster, a bundled broadcaster fallback, then the generic project logo. Event thumbnails remain separate. Refresh both the
 M3U source and XMLTV guide in Channels after updating; cached logos may not change
 immediately. An empty lane uses the generic logo.
 
@@ -195,7 +195,15 @@ language metadata before they can be classified.
 Discovered broadcaster logos are stored independently of event rows and survive
 schedule refreshes. Local PNG fallbacks cover ESPN, ESPN2, ESPNU, ESPNEWS, ESPN+,
 SEC Network, SEC+, ACC Network, ACC Extra, FS1, FS2, CBS Sports Network, and NFL
-Network. Exact aliases are mapped explicitly; other stations still use discovered
+Network. ESPN Unlimited, ESPN Plus, and ES resolve to ESPN+; explicit ESPN+ channel metadata
+also takes precedence over a broad ESPN station label. Logos belonging to that
+broad ESPN label are skipped in this case. Game titles alone do not establish a
+broadcaster. When the EPG and a game card describe the same stream and start time,
+an explicit ESPN+ label takes precedence over a broad ESPN label. The optional
+ESPN schedule enrichment also corrects broad ESPN labels when its exact title and
+start time (within five minutes) match and all matching listings identify ESPN+.
+Conflicting or missing broadcaster evidence leaves the original label intact.
+Exact aliases are mapped explicitly; other stations still use discovered
 logos or the generic fallback. Original asset URLs are recorded in
 `src/yttv_epg/static/station-logos/sources.json`. These broadcaster marks retain
 their original ownership.
@@ -237,3 +245,22 @@ sensitive encrypted session data and should remain in the persistent data volume
 Watch-link resolution preserves playback parameters, ignores ended/invalid
 listings, and prioritizes active games followed by nearest upcoming games within
 the existing lookup window and limit.
+
+## Individual channel filters
+
+Channel chips independently control each discovered channel, including ESPN,
+ESPN2, ESPNU, ESPNEWS, ESPN+, FS1, FS2, FOX, ABC, NBC, NBC Sports, CBS, and CBS
+Sports. Local affiliates and numbered extra feeds also remain separate, except ViX feeds
+which share one **ViX** filter with a combined event count. Their original station
+names and logos remain available in the guide. Any previously excluded ViX feed
+becomes a ViX group exclusion; selecting ViX includes all of its feeds again. Equivalent
+aliases such as FS1 / FOX SPORTS 1 share a chip. Filter counts, dashboard rows,
+tuner lanes, and XMLTV use the same channel identity.
+
+On the first startup after upgrading, saved network-family exclusions expand to
+known constituent channels and matching stations in the saved guide. This migration
+runs once; later selections are independent. Newly discovered affiliates or numbered
+feeds not present during migration are included until individually excluded.
+New installations and `HIDDEN_CHANNELS` defaults use individual identities.
+The `/api/filters` interface is unchanged, with individual channel names in its
+channel lists. Refresh the Channels DVR M3U source and XMLTV after updating.

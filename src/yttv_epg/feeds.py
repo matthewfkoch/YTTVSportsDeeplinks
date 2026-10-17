@@ -8,6 +8,7 @@ from xml.sax.saxutils import escape as xml_escape
 from yttv_epg.branding import LOGO_PATH, PRODUCT_NAME, SOURCE_NAME
 from yttv_epg.lanes import LaneAssignment, whatson
 from yttv_epg.station_logos import station_key, bundled_logo
+from yttv_epg.sports import channel_identity, event_channel
 from yttv_epg.parse import (
     Airing,
     GUIDE_ARTWORK_HEIGHT,
@@ -48,7 +49,7 @@ def lane_logos(
     for row in sorted(assignments, key=lambda row: row.airing.start, reverse=True):
         airing = row.airing
         key = station_key(airing.station)
-        if key and airing.station_logo:
+        if key and airing.station_logo and channel_identity(airing.station) == event_channel(airing):
             known.setdefault(key, airing.station_logo)
         if airing.watch_id() and airing.end > airing.start:
             by_lane.setdefault(row.lane, []).append(row)
@@ -63,9 +64,15 @@ def lane_logos(
                 default=None,
             )
         key = station_key(selected.station) if selected else ""
+        identity = event_channel(selected) if selected else ""
+        identity_key = station_key(identity)
+        same_station = bool(selected and channel_identity(selected.station) == identity)
         result[lane] = (
-            overrides.get(key) or (selected.station_logo if selected else "")
-            or known.get(key) or (bundled_logo(selected.station, base_url) if selected else "")
+            overrides.get(key) or overrides.get(identity_key)
+            or (selected.station_logo if same_station else "")
+            or (known.get(key) if same_station else "")
+            or known.get(identity_key)
+            or bundled_logo(identity, base_url)
             or (logo_url(base_url) if base_url else "")
         )
     return result

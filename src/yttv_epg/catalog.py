@@ -12,7 +12,8 @@ from yttv_epg.languages import broadcast_language
 from yttv_epg.station_logos import station_key
 from yttv_epg.lanes import LaneAssignment
 from yttv_epg.parse import Airing, keep_artwork
-from yttv_epg.sports import clean_station, infer_channel, is_matchup, resolve_sport
+from yttv_epg.sports import (CHANNEL_RULES, channel_filter, channel_identity, event_channel, clean_station,
+                             infer_channel, is_matchup, resolve_sport)
 
 
 def _better_row(candidate: Airing, current: Airing) -> bool:
@@ -102,7 +103,8 @@ class Catalog:
     def _remember_station_logos(self, cur, events: list[Airing]) -> None:
         cur.executemany(
             "INSERT INTO station_logos(station, url) VALUES (?, ?) ON CONFLICT(station) DO UPDATE SET url=excluded.url",
-            [(station_key(item.station), item.station_logo) for item in events if station_key(item.station) and item.station_logo],
+            [(station_key(item.station), item.station_logo) for item in events if station_key(item.station) and item.station_logo
+             and channel_identity(item.station) == event_channel(item)],
         )
 
     def station_logos(self) -> dict[str, str]:
@@ -301,11 +303,12 @@ class Catalog:
             self._conn.commit()
 
     def update_sports(self, airings: list[Airing]) -> None:
+        """Persist schedule enrichment, including verified broadcaster corrections."""
         with self._lock:
             self._conn.executemany(
-                "UPDATE events SET sport = ? WHERE video_id = ? AND start_ts = ?",
+                "UPDATE events SET sport = ?, station = ?, channel = ?, station_logo = ? WHERE video_id = ? AND start_ts = ?",
                 [
-                    (item.sport, item.video_id, item.start.timestamp())
+                    (item.sport, item.station, item.channel, item.station_logo, item.video_id, item.start.timestamp())
                     for item in airings
                 ],
             )
@@ -319,7 +322,25 @@ class Catalog:
     def ensure_hidden_channels(self, defaults: list[str]) -> None:
         if "hidden_channels" in self.meta():
             return
+        self._set_meta("channel_filter_version", "2")
         self.set_hidden_channels(defaults)
+
+    def migrate_channel_filters(self) -> None:
+        """Expand legacy family exclusions once before rebuilding startup lanes."""
+        with self._lock:
+            if self.meta().get("channel_filter_version") == "2":
+                return
+            hidden = self.hidden_channels()
+            expanded = {channel_identity(name) for name in hidden}
+            for family, hints in CHANNEL_RULES:
+                if family in hidden:
+                    expanded.update(channel_identity(hint) for hint in hints)
+            for event in self.events():
+                if infer_channel(event.station, event.title) in hidden:
+                    expanded.add(event_channel(event))
+            self._set_meta("hidden_channels", json.dumps(sorted(expanded - {""})))
+            self._set_meta("channel_filter_version", "2")
+            self._conn.commit()
 
     def set_error(self, message: str) -> None:
         with self._lock:
@@ -340,17 +361,17 @@ class Catalog:
             self._set_meta_list("hidden_sports", sports)
 
     def hidden_channels(self) -> list[str]:
-        return [
-            item
+        return sorted({
+            channel_filter(item)
             for item in self._meta_list("hidden_channels")
             if item not in {"Other", "Other extras"}
-        ]
+        })
 
     def set_hidden_channels(self, channels: list[str]) -> None:
         with self._lock:
             self._set_meta_list(
                 "hidden_channels",
-                [item for item in channels if item not in {"Other", "Other extras"}],
+                [channel_filter(item) for item in channels if item not in {"Other", "Other extras"}],
             )
 
     def meta(self) -> dict[str, str]:
@@ -465,7 +486,7 @@ class Catalog:
             source=str(row["source"]),
             sport=sport,
             entity_id=str(row["entity_id"]) if "entity_id" in keys else "",
-            channel=infer_channel(station, title),
+            channel=(str(row["channel"]) if "channel" in keys and row["channel"] else infer_channel(station, title)),
             artwork=str(row["artwork"]) if "artwork" in keys else "",
             artwork_secondary=str(row["artwork_secondary"]) if "artwork_secondary" in keys else "",
             station_logo=str(row["station_logo"]) if "station_logo" in keys else "",

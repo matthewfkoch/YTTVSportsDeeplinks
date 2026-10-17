@@ -285,3 +285,33 @@ def test_espn_fills_placeholder_kickoff_from_team_names():
     )
     assert rows[0].start == kickoff
     assert rows[0].sport == "Football"
+
+
+def test_reported_uconn_broadcaster_corrected_from_official_schedule():
+    from dataclasses import replace
+    start = datetime(2026, 10, 17, 19, tzinfo=timezone.utc)
+    game = _airing("#8 UConn vs. #7 Princeton", "ESPN", start)
+    game.station_logo = "https://example.com/espn.png"
+    listing = EspnListing(game.title, "Hockey", start, network="ESPN+")
+    corrected = apply_espn_sports([game], [listing])[0]
+    assert corrected.station == corrected.channel == "ESPN+"
+    assert corrected.station_logo == ""
+    assert corrected.sport == "Hockey"
+    assert corrected.deeplink == game.deeplink
+    assert corrected.broadcast_live == game.broadcast_live
+    for listings in (
+        [replace(listing, start=start + timedelta(days=1))],
+        [replace(listing, start=start + timedelta(minutes=6))],
+        [replace(listing, name="UConn vs Princeton")],
+        [listing, replace(listing, network="ESPN")],
+        [listing, replace(listing, network="")],
+    ):
+        assert apply_espn_sports([game], listings)[0].station == "ESPN"
+    assert apply_espn_sports([replace(game, station="ESPN2")], [listing])[0].station == "ESPN2"
+
+
+def test_schedule_keeps_conflicting_broadcasters_for_same_game():
+    rows = [{"name": "UConn vs Princeton", "sport": {"name": "Hockey"},
+             "startDateTime": "2026-10-17T19:00:00Z", "network": {"name": network}}
+            for network in ("ESPN", "ESPN+")]
+    assert {row.network for row in parse_airings_payload({"data": {"airings": rows}})} == {"ESPN", "ESPN+"}

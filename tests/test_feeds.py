@@ -415,3 +415,22 @@ def test_lane_logo_priority_with_persisted_and_bundled_fallbacks():
     assert lane_logos(rows,1,base,now,persisted_logos=persisted)[1] == game.station_logo
     override = {"espn+":"https://example.com/override.png"}
     assert lane_logos(rows,1,base,now,override,persisted)[1] == override["espn+"]
+
+
+def test_espn_plus_identity_drives_both_feed_logos():
+    from dataclasses import replace
+    from yttv_epg.feeds import lane_logos
+    base = "http://example.com"
+    for station, channel in [("ESPN Unlimited", "ESPN"), ("ESPN Plus", ""),
+                             ("ES", "ESPN"), ("ESPN", "ESPN+"), ("", "ESPN+")]:
+        event = replace(_airing(), station=station, channel=channel, station_logo="")
+        if station == "ESPN":
+            event.station_logo = "https://example.com/espn.png"
+        rows = [LaneAssignment(1, event)]
+        expected = base + "/static/station-logos/espn-plus.png"
+        kwargs = dict(base_url=base, now=event.start, persisted_logos={"espn": "https://example.com/old-espn.png"})
+        assert lane_logos(rows, 1, base, event.start, persisted_logos=kwargs["persisted_logos"])[1] == expected
+        assert ET.fromstring(xmltv(rows, 1, **kwargs)).find("channel/icon").get("src") == expected
+        assert f'tvg-logo="{expected}"' in m3u(lane_count=1, base_url=base, start_channel=1, package_name="test", alternate_package_name="test", assignments=rows, now=event.start, persisted_logos=kwargs["persisted_logos"])
+        override = "https://example.com/custom.png"
+        assert lane_logos(rows, 1, base, event.start, {"espn+": override})[1] == override
