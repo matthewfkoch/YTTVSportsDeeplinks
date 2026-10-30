@@ -123,6 +123,18 @@ class Catalog:
         if "hide_spanish" not in self.meta():
             self.set_hide_spanish(default)
 
+    def xmltv_live_on_air(self) -> bool:
+        return self.meta().get("xmltv_live_on_air", "false") == "true"
+
+    def set_xmltv_live_on_air(self, enabled: bool) -> None:
+        with self._lock:
+            self._set_meta("xmltv_live_on_air", "true" if enabled else "false")
+            self._conn.commit()
+
+    def ensure_xmltv_live_on_air(self, default: bool) -> None:
+        if "xmltv_live_on_air" not in self.meta():
+            self.set_xmltv_live_on_air(default)
+
     def replace(
         self,
         airings: list[Airing],

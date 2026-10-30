@@ -1,0 +1,1422 @@
+[
+  {
+    "airing": {
+      "video_id": "UCQQ-6gRHpNxwadOdr5l71Mw",
+      "entity_id": "UCQQ-6gRHpNxwadOdr5l71Mw",
+      "title": "Atlante vs. Atlético San Luis",
+      "station": "TUDN",
+      "start": "2026-10-29T15:00:00+00:00",
+      "end": "2026-10-29T16:00:00+00:00"
+    },
+    "capture": {
+      "schema_version": 1,
+      "captured_at": "2026-10-29T11:43:06.043265+00:00",
+      "browse_id": "UCQQ-6gRHpNxwadOdr5l71Mw",
+      "video_id": null,
+      "watch_metadata": [],
+      "details": [
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedContentDetailsAboutRenderer/contents/1/unpluggedContentDetailsAboutFieldsRenderer",
+          "renderer": "unpluggedContentDetailsAboutFieldsRenderer",
+          "fields": {
+            "description": {
+              "runs": [
+                {
+                  "text": "Los momentos más destacados del partido de la fecha 14 del Torneo Apertura 2026 de la Liga MX. Atlante recibe a Atlético San Luis. Desde el Estadio Banorte, en Ciudad de México. Disputado el 23 de octubre de 2026."
+                }
+              ]
+            }
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedContentDetailsAboutRenderer/contents/2/unpluggedContentDetailsAboutFieldsRenderer",
+          "renderer": "unpluggedContentDetailsAboutFieldsRenderer",
+          "fields": {
+            "attributes": [
+              {
+                "runs": [
+                  {
+                    "text": "On "
+                  },
+                  {
+                    "text": "TUDN"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer",
+          "renderer": "unpluggedCompactVideoRenderer",
+          "fields": {
+            "description": {
+              "runs": [
+                {
+                  "text": "Los momentos más destacados del partido de la fecha 14 del Torneo Apertura 2026 de la Liga MX. Atlante recibe a Atlético San Luis. Desde el Estadio Banorte, en Ciudad de México. Disputado el 23 de octubre de 2026."
+                }
+              ]
+            },
+            "startTimeSeconds": "1793286000",
+            "endTimeSeconds": "1793289600",
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "Atlante vs. Atlético San Luis"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "ES"
+                },
+                {
+                  "text": " • "
+                },
+                {
+                  "text": "TUDN"
+                }
+              ]
+            },
+            "badge": {
+              "unpluggedTextBadgeRenderer": {
+                "label": {
+                  "runs": [
+                    {
+                      "text": "11:00 AM"
+                    }
+                  ]
+                },
+                "type": "SCHEDULED"
+              }
+            }
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/0/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "TUDN"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Today, 11:00 AM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/1/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "TUDN"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Fri, Nov 6, 6:00 PM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/header/unpluggedContentDetailsHeaderRenderer",
+          "renderer": "unpluggedContentDetailsHeaderRenderer",
+          "fields": {
+            "title": {
+              "runs": [
+                {
+                  "text": "Atlante vs. Atlético San Luis"
+                }
+              ]
+            },
+            "contentType": "EVENT",
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "Atlante vs. Atlético San Luis"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "airing": {
+      "video_id": "UCYtuX_L9UUw1Uf0oWYIUQiA",
+      "entity_id": "UCYtuX_L9UUw1Uf0oWYIUQiA",
+      "title": "Women's Basketball: California at USC",
+      "station": "BTN",
+      "start": "2026-10-29T14:00:00+00:00",
+      "end": "2026-10-29T15:00:00+00:00"
+    },
+    "capture": {
+      "schema_version": 1,
+      "captured_at": "2026-10-29T11:42:33.732730+00:00",
+      "browse_id": "UCYtuX_L9UUw1Uf0oWYIUQiA",
+      "video_id": null,
+      "watch_metadata": [],
+      "details": [
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedContentDetailsAboutRenderer/contents/1/unpluggedContentDetailsAboutFieldsRenderer",
+          "renderer": "unpluggedContentDetailsAboutFieldsRenderer",
+          "fields": {
+            "description": {
+              "runs": [
+                {
+                  "text": "Replays of the best action from Big Ten contests."
+                }
+              ]
+            }
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedContentDetailsAboutRenderer/contents/2/unpluggedContentDetailsAboutFieldsRenderer",
+          "renderer": "unpluggedContentDetailsAboutFieldsRenderer",
+          "fields": {
+            "attributes": [
+              {
+                "runs": [
+                  {
+                    "text": "On "
+                  },
+                  {
+                    "text": "BTN"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer",
+          "renderer": "unpluggedCompactVideoRenderer",
+          "fields": {
+            "description": {
+              "runs": [
+                {
+                  "text": "Replays of the best action from Big Ten contests."
+                }
+              ]
+            },
+            "startTimeSeconds": "1793282400",
+            "endTimeSeconds": "1793286000",
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "Women's Basketball: California at USC"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "BTN"
+                }
+              ]
+            },
+            "badge": {
+              "unpluggedTextBadgeRenderer": {
+                "label": {
+                  "runs": [
+                    {
+                      "text": "10:00 AM"
+                    }
+                  ]
+                },
+                "type": "SCHEDULED"
+              }
+            }
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/0/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "BTN"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Today, 10:00 AM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/header/unpluggedContentDetailsHeaderRenderer",
+          "renderer": "unpluggedContentDetailsHeaderRenderer",
+          "fields": {
+            "title": {
+              "runs": [
+                {
+                  "text": "Women's Basketball: California at USC"
+                }
+              ]
+            },
+            "contentType": "EVENT",
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "Women's Basketball: California at USC"
+                }
+              ]
+            },
+            "badge": {}
+          }
+        }
+      ]
+    }
+  },
+  {
+    "airing": {
+      "video_id": "REDa2WAueQU",
+      "entity_id": "",
+      "title": "Bayern München vs. Arsenal",
+      "station": "TUDN",
+      "start": "2026-10-29T13:00:00+00:00",
+      "end": "2026-10-29T14:00:00+00:00"
+    },
+    "capture": {
+      "schema_version": 1,
+      "captured_at": "2026-10-29T11:42:01.928640+00:00",
+      "browse_id": "UCGB95Qt5LXOo3OubRl6eX8Q",
+      "video_id": "REDa2WAueQU",
+      "watch_metadata": [
+        {
+          "path": "/contents/singleColumnWatchNextResults/results/watchNextTabbedResultsRenderer/videoMetadata/unpluggedVideoMetadataRenderer",
+          "renderer": "unpluggedVideoMetadataRenderer",
+          "fields": {
+            "description": {
+              "runs": [
+                {
+                  "text": "Compacto de la fecha 3 de la UEFA Champions League 2026-27. Encuentro entre Bayern München y Arsenal. Disputado el 21 de octubre de 2026."
+                }
+              ]
+            },
+            "startTimeSeconds": "1793278800",
+            "endTimeSeconds": "1793282400",
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "Bayern München vs. Arsenal"
+                }
+              ]
+            },
+            "navigationEndpoint": {
+              "browseEndpoint": {
+                "browseId": "UCGB95Qt5LXOo3OubRl6eX8Q"
+              }
+            }
+          }
+        }
+      ],
+      "details": [
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedContentDetailsAboutRenderer/contents/1/unpluggedContentDetailsAboutFieldsRenderer",
+          "renderer": "unpluggedContentDetailsAboutFieldsRenderer",
+          "fields": {
+            "description": {
+              "runs": [
+                {
+                  "text": "Compacto de la fecha 3 de la UEFA Champions League 2026-27. Encuentro entre Bayern München y Arsenal. Disputado el 21 de octubre de 2026."
+                }
+              ]
+            }
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedContentDetailsAboutRenderer/contents/2/unpluggedContentDetailsAboutFieldsRenderer",
+          "renderer": "unpluggedContentDetailsAboutFieldsRenderer",
+          "fields": {
+            "attributes": [
+              {
+                "runs": [
+                  {
+                    "text": "On "
+                  },
+                  {
+                    "text": "TUDN"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer",
+          "renderer": "unpluggedCompactVideoRenderer",
+          "fields": {
+            "description": {
+              "runs": [
+                {
+                  "text": "Compacto de la fecha 3 de la UEFA Champions League 2026-27. Encuentro entre Bayern München y Arsenal. Disputado el 21 de octubre de 2026."
+                }
+              ]
+            },
+            "startTimeSeconds": "1793278800",
+            "endTimeSeconds": "1793282400",
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "Bayern München vs. Arsenal"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "ES"
+                },
+                {
+                  "text": " • "
+                },
+                {
+                  "text": "TUDN"
+                }
+              ]
+            },
+            "badge": {
+              "unpluggedTextBadgeRenderer": {
+                "label": {
+                  "runs": [
+                    {
+                      "text": "9:00 AM"
+                    }
+                  ]
+                },
+                "type": "SCHEDULED"
+              }
+            }
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/0/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "TUDN"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Today, 9:00 AM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/1/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "TUDN"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Fri, Oct 30, 4:00 AM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/2/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "TUDN"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Mon, Nov 2, 9:00 AM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/3/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "TUDN"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Tue, Nov 3, 4:00 AM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/header/unpluggedContentDetailsHeaderRenderer",
+          "renderer": "unpluggedContentDetailsHeaderRenderer",
+          "fields": {
+            "title": {
+              "runs": [
+                {
+                  "text": "Bayern München vs. Arsenal"
+                }
+              ]
+            },
+            "contentType": "EVENT",
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "Bayern München vs. Arsenal"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "airing": {
+      "video_id": "sTSSiPCQKTo",
+      "entity_id": "",
+      "title": "Tennis Today",
+      "station": "T2",
+      "start": "2026-10-29T12:00:00+00:00",
+      "end": "2026-10-29T12:30:00+00:00"
+    },
+    "capture": {
+      "schema_version": 1,
+      "captured_at": "2026-10-29T11:41:29.027315+00:00",
+      "browse_id": "UCHgq6_15r1guyhHPa-4-oSA",
+      "video_id": "sTSSiPCQKTo",
+      "watch_metadata": [
+        {
+          "path": "/contents/singleColumnWatchNextResults/results/watchNextTabbedResultsRenderer/videoMetadata/unpluggedVideoMetadataRenderer",
+          "renderer": "unpluggedVideoMetadataRenderer",
+          "fields": {
+            "startTimeSeconds": "1793275200",
+            "endTimeSeconds": "1793277000",
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "Tennis Today"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "TV-G • Oct 28 • Basel-ATP & Vienna-ATP Early Rounds"
+                }
+              ]
+            },
+            "navigationEndpoint": {
+              "browseEndpoint": {
+                "browseId": "UCHgq6_15r1guyhHPa-4-oSA"
+              }
+            }
+          }
+        }
+      ],
+      "details": [
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedContentDetailsAboutRenderer/contents/1/unpluggedContentDetailsAboutFieldsRenderer",
+          "renderer": "unpluggedContentDetailsAboutFieldsRenderer",
+          "fields": {}
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedContentDetailsAboutRenderer/contents/2/unpluggedContentDetailsAboutFieldsRenderer",
+          "renderer": "unpluggedContentDetailsAboutFieldsRenderer",
+          "fields": {
+            "attributes": [
+              {
+                "runs": [
+                  {
+                    "text": "Tennis"
+                  }
+                ]
+              },
+              {
+                "runs": [
+                  {
+                    "text": "On "
+                  },
+                  {
+                    "text": "T2"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/0/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer",
+          "renderer": "unpluggedCompactVideoRenderer",
+          "fields": {
+            "startTimeSeconds": "1793307600",
+            "endTimeSeconds": "1793316600",
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "Oct 26 • Basel-ATP & Vienna-ATP Early Rounds"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "badge": {
+              "unpluggedTextBadgeRenderer": {
+                "label": {
+                  "runs": [
+                    {
+                      "text": "5:00 PM"
+                    }
+                  ]
+                },
+                "type": "SCHEDULED"
+              }
+            }
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/0/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/0/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Today, 5:00 PM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/0/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/1/unpluggedCompactVideoRenderer",
+          "renderer": "unpluggedCompactVideoRenderer",
+          "fields": {
+            "startTimeSeconds": "1793275200",
+            "endTimeSeconds": "1793277000",
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "Oct 28 • Basel-ATP & Vienna-ATP Early Rounds"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "badge": {
+              "unpluggedTextBadgeRenderer": {
+                "label": {
+                  "runs": [
+                    {
+                      "text": "8:00 AM"
+                    }
+                  ]
+                },
+                "type": "SCHEDULED"
+              }
+            }
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/0/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/1/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/0/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Today, 8:00 AM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/0/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/1/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/1/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Today, 11:00 PM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/0/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/2/unpluggedCompactVideoRenderer",
+          "renderer": "unpluggedCompactVideoRenderer",
+          "fields": {
+            "startTimeSeconds": "1793394000",
+            "endTimeSeconds": "1793403000",
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "Oct 30 • Basel-ATP & Vienna-ATP Quarterfinals"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "badge": {
+              "unpluggedTextBadgeRenderer": {
+                "label": {
+                  "runs": [
+                    {
+                      "text": "Fri 5:00 PM"
+                    }
+                  ]
+                },
+                "type": "SCHEDULED"
+              }
+            }
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/0/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/2/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/0/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Fri, Oct 30, 5:00 PM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/0/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/2/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/1/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Sat, Oct 31, 1:30 AM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/0/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/3/unpluggedCompactVideoRenderer",
+          "renderer": "unpluggedCompactVideoRenderer",
+          "fields": {
+            "startTimeSeconds": "1793410200",
+            "endTimeSeconds": "1793424600",
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "Oct 30 • Basel-ATP & Vienna-ATP Quarterfinals"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "badge": {
+              "unpluggedTextBadgeRenderer": {
+                "label": {
+                  "runs": [
+                    {
+                      "text": "Fri 9:30 PM"
+                    }
+                  ]
+                },
+                "type": "SCHEDULED"
+              }
+            }
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/0/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/3/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/0/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Fri, Oct 30, 9:30 PM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/0/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/3/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/1/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Sat, Oct 31, 6:00 AM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/0/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/4/unpluggedCompactVideoRenderer",
+          "renderer": "unpluggedCompactVideoRenderer",
+          "fields": {
+            "startTimeSeconds": "1793469600",
+            "endTimeSeconds": "1793484000",
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "Oct 31 • Vienna-ATP & Basel Semifinals"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "badge": {
+              "unpluggedTextBadgeRenderer": {
+                "label": {
+                  "runs": [
+                    {
+                      "text": "Sat 2:00 PM"
+                    }
+                  ]
+                },
+                "type": "SCHEDULED"
+              }
+            }
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/0/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/4/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/0/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Sat, Oct 31, 2:00 PM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/0/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/4/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/1/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Sat, Oct 31, 6:00 PM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/0/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/4/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/2/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Sat, Oct 31, 10:00 PM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/0/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/4/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/3/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Sun, Nov 1, 2:00 AM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/header/unpluggedContentDetailsHeaderRenderer",
+          "renderer": "unpluggedContentDetailsHeaderRenderer",
+          "fields": {
+            "title": {
+              "runs": [
+                {
+                  "text": "Tennis Today"
+                }
+              ]
+            },
+            "contentType": "SHOW",
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "Tennis Today"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "2024 – Present"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "airing": {
+      "video_id": "5w5CS6Fuivk",
+      "entity_id": "",
+      "title": "Tennis Today Live",
+      "station": "T2",
+      "start": "2026-10-29T12:30:00+00:00",
+      "end": "2026-10-29T15:00:00+00:00"
+    },
+    "capture": {
+      "schema_version": 1,
+      "captured_at": "2026-10-29T11:41:30.482796+00:00",
+      "browse_id": "UCg3c4PgrmnpwwyrE_reskSA",
+      "video_id": "5w5CS6Fuivk",
+      "watch_metadata": [
+        {
+          "path": "/contents/singleColumnWatchNextResults/results/watchNextTabbedResultsRenderer/videoMetadata/unpluggedVideoMetadataRenderer",
+          "renderer": "unpluggedVideoMetadataRenderer",
+          "fields": {
+            "description": {
+              "runs": [
+                {
+                  "text": "Coverage from ATP, WTA and other events from around the world."
+                }
+              ]
+            },
+            "startTimeSeconds": "1793277000",
+            "endTimeSeconds": "1793286000",
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "Tennis Today Live"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "TV-G • Oct 29, 8:30 AM • Basel-ATP & Vienna-ATP Early Rounds"
+                }
+              ]
+            },
+            "navigationEndpoint": {
+              "browseEndpoint": {
+                "browseId": "UCg3c4PgrmnpwwyrE_reskSA"
+              }
+            }
+          }
+        }
+      ],
+      "details": [
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedContentDetailsAboutRenderer/contents/1/unpluggedContentDetailsAboutFieldsRenderer",
+          "renderer": "unpluggedContentDetailsAboutFieldsRenderer",
+          "fields": {
+            "description": {
+              "runs": [
+                {
+                  "text": "Coverage from ATP, WTA and other events from around the world."
+                }
+              ]
+            }
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedContentDetailsAboutRenderer/contents/2/unpluggedContentDetailsAboutFieldsRenderer",
+          "renderer": "unpluggedContentDetailsAboutFieldsRenderer",
+          "fields": {
+            "attributes": [
+              {
+                "runs": [
+                  {
+                    "text": "Tennis"
+                  }
+                ]
+              },
+              {
+                "runs": [
+                  {
+                    "text": "On "
+                  },
+                  {
+                    "text": "T2"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/1/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer",
+          "renderer": "unpluggedCompactVideoRenderer",
+          "fields": {
+            "description": {
+              "runs": [
+                {
+                  "text": "Coverage from ATP, WTA and other events from around the world."
+                }
+              ]
+            },
+            "startTimeSeconds": "1793277000",
+            "endTimeSeconds": "1793286000",
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "Oct 29, 8:30 AM • Basel-ATP & Vienna-ATP Early Rounds"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "badge": {
+              "unpluggedTextBadgeRenderer": {
+                "label": {
+                  "runs": [
+                    {
+                      "text": "8:30 AM"
+                    }
+                  ]
+                },
+                "type": "SCHEDULED"
+              }
+            }
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/1/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/0/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Today, 8:30 AM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/1/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/1/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Today, 1:00 PM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/1/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/1/unpluggedCompactVideoRenderer",
+          "renderer": "unpluggedCompactVideoRenderer",
+          "fields": {
+            "description": {
+              "runs": [
+                {
+                  "text": "Coverage from ATP, WTA and other events from around the world."
+                }
+              ]
+            },
+            "startTimeSeconds": "1793379600",
+            "endTimeSeconds": "1793394000",
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "Oct 30, 1:00 PM • Basel-ATP & Vienna-ATP Quarterfinals"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "badge": {
+              "unpluggedTextBadgeRenderer": {
+                "label": {
+                  "runs": [
+                    {
+                      "text": "Fri 1:00 PM"
+                    }
+                  ]
+                },
+                "type": "SCHEDULED"
+              }
+            }
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/1/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/1/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/0/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Fri, Oct 30, 1:00 PM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/1/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/2/unpluggedCompactVideoRenderer",
+          "renderer": "unpluggedCompactVideoRenderer",
+          "fields": {
+            "description": {
+              "runs": [
+                {
+                  "text": "Coverage from ATP, WTA and other events from around the world."
+                }
+              ]
+            },
+            "startTimeSeconds": "1793363400",
+            "endTimeSeconds": "1793372400",
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "Oct 30, 8:30 AM • Basel-ATP & Vienna-ATP Quarterfinals"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "badge": {
+              "unpluggedTextBadgeRenderer": {
+                "label": {
+                  "runs": [
+                    {
+                      "text": "Fri 8:30 AM"
+                    }
+                  ]
+                },
+                "type": "SCHEDULED"
+              }
+            }
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/1/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/2/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/0/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Fri, Oct 30, 8:30 AM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/1/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/3/unpluggedCompactVideoRenderer",
+          "renderer": "unpluggedCompactVideoRenderer",
+          "fields": {
+            "description": {
+              "runs": [
+                {
+                  "text": "Coverage from ATP, WTA and other events from around the world."
+                }
+              ]
+            },
+            "startTimeSeconds": "1793455200",
+            "endTimeSeconds": "1793469600",
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "Oct 31, 10:00 AM • Vienna-ATP & Basel Semifinals"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "badge": {
+              "unpluggedTextBadgeRenderer": {
+                "label": {
+                  "runs": [
+                    {
+                      "text": "Sat 10:00 AM"
+                    }
+                  ]
+                },
+                "type": "SCHEDULED"
+              }
+            }
+          }
+        },
+        {
+          "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedSelectableSectionRenderer/contents/1/unpluggedSelectableSectionContentsRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/3/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/0/unpluggedCompactVideoVersionRenderer",
+          "renderer": "unpluggedCompactVideoVersionRenderer",
+          "fields": {
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "T2 • TV-G"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "Upcoming • Sat, Oct 31, 10:00 AM"
+                }
+              ]
+            },
+            "navigationEndpoint": {}
+          }
+        },
+        {
+          "path": "/header/unpluggedContentDetailsHeaderRenderer",
+          "renderer": "unpluggedContentDetailsHeaderRenderer",
+          "fields": {
+            "title": {
+              "runs": [
+                {
+                  "text": "Tennis Today Live"
+                }
+              ]
+            },
+            "contentType": "SHOW",
+            "primaryText": {
+              "runs": [
+                {
+                  "text": "Tennis Today Live"
+                }
+              ]
+            },
+            "secondaryText": {
+              "runs": [
+                {
+                  "text": "2024 – Present"
+                }
+              ]
+            },
+            "badge": {}
+          }
+        }
+      ]
+    }
+  }
+]

@@ -24,6 +24,7 @@ from yttv_epg.chrome import clear_browser_cookies, fetch_cookies
 from yttv_epg.chrome import innertube_post, keepalive_youtube_tv, open_youtube_tv, park_youtube_tv
 from yttv_epg.chrome import prune_chrome_profile, status as chrome_status
 from yttv_epg.config import settings
+from yttv_epg.detail_evidence import EvidenceStore, collect_evidence
 from yttv_epg.resolution import unresolved_soon
 from yttv_epg.display import format_refresh, group_events_for_ui, local_tz
 from yttv_epg.espn_schedule import apply_espn_sports, fetch_espn_schedule
@@ -55,6 +56,9 @@ class State:
     def __init__(self) -> None:
         self.store = SessionStore(settings.data_dir, settings.secret)
         self.catalog = Catalog(settings.data_dir / "catalog.sqlite")
+        self.evidence = EvidenceStore(settings.data_dir / "broadcast-evidence.sqlite")
+        self.evidence_last_cycle: Optional[str] = None
+        self.evidence_error: Optional[str] = None
         self.http = httpx.AsyncClient(timeout=60.0, follow_redirects=True)
         self.innertube = InnerTubeClient(self.http)
         self.refresh_lock = asyncio.Lock()
@@ -76,11 +80,11 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if not settings.admin_locked:
             response = await call_next(request)
-            if request.url.path in {"/", "/api/filters", "/api/status"}:
+            if request.url.path in {"/", "/api/filters", "/api/status", "/api/broadcast-evidence"}:
                 response.headers["Cache-Control"] = "no-store"
             return response
         path = request.url.path
-        if path == "/" or path.startswith("/api/auth") or path.startswith("/api/status") or path.startswith("/api/refresh") or path.startswith("/api/filters"):
+        if path == "/" or path.startswith("/api/auth") or path.startswith("/api/status") or path.startswith("/api/refresh") or path.startswith("/api/filters") or path.startswith("/api/broadcast-evidence"):
             auth = request.headers.get("authorization", "")
             expected = _basic_header(settings.admin_user, settings.admin_password)
             if not secrets.compare_digest(auth, expected):
@@ -90,7 +94,7 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
                     headers={"WWW-Authenticate": 'Basic realm="YTTV Sports"', "Cache-Control": "no-store"},
                 )
         response = await call_next(request)
-        if request.url.path in {"/", "/api/filters", "/api/status"}:
+        if request.url.path in {"/", "/api/filters", "/api/status", "/api/broadcast-evidence"}:
             response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -544,6 +548,28 @@ async def refresh_loop() -> None:
         await asyncio.sleep(delay)
 
 
+async def evidence_loop() -> None:
+    while True:
+        # Let guide refreshes finish first; share their session/browser request
+        # path and lock so parking or login work cannot race a detail request.
+        await asyncio.sleep(30)
+        if not settings.detail_evidence or state.refreshing or not state.session:
+            continue
+        try:
+            async with state.refresh_lock:
+                if state.refreshing or not state.session:
+                    continue
+                await collect_evidence(state.evidence, state.innertube, state.session,
+                                       state.catalog.events(kind="event"), limit=2)
+                state.evidence_last_cycle = datetime.now(timezone.utc).isoformat()
+                state.evidence_error = None
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            # Diagnostics must never interrupt the guide refresh loop.
+            state.evidence_error = type(exc).__name__
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     state.station_logos = load_station_logos(settings.station_logos_file)
@@ -553,6 +579,7 @@ async def lifespan(_app: FastAPI):
     state.catalog.ensure_hidden_channels(settings.hidden_channels_list)
     state.catalog.migrate_channel_filters()
     state.catalog.ensure_hide_spanish(settings.hide_spanish)
+    state.catalog.ensure_xmltv_live_on_air(settings.xmltv_live_on_air)
     visible = _visible_events()
     _store_lanes(
         _pack_visible(visible),
@@ -567,14 +594,13 @@ async def lifespan(_app: FastAPI):
     except Exception:
         pass
     task = asyncio.create_task(refresh_loop())
+    evidence_task = asyncio.create_task(evidence_loop())
     try:
         yield
     finally:
         task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+        evidence_task.cancel()
+        await asyncio.gather(task, evidence_task, return_exceptions=True)
         await state.http.aclose()
 
 
@@ -638,6 +664,7 @@ async def dashboard(request: Request) -> HTMLResponse:
             "hidden_sports": hidden,
             "hidden_channels": hidden_channels,
             "hide_spanish": state.catalog.hide_spanish(),
+            "xmltv_live_on_air": state.catalog.xmltv_live_on_air(),
             "lane_count": settings.lane_count,
             "lanes_used": int(meta.get("lanes_used") or 0),
             "dropped_events": int(meta.get("dropped_events") or 0),
@@ -660,6 +687,7 @@ async def api_status() -> dict[str, Any]:
         "signed_in": auth["signed_in"],
         "session_expired": auth["session_expired"],
         "hide_spanish": state.catalog.hide_spanish(),
+        "xmltv_live_on_air": state.catalog.xmltv_live_on_air(),
         "last_refresh": meta.get("last_refresh"),
         "last_error": auth["last_error"],
         "refreshing": state.refreshing,
@@ -746,6 +774,7 @@ async def get_filters() -> dict[str, Any]:
         "hidden": hidden,
         "hidden_channels": hidden_channels,
         "hide_spanish": state.catalog.hide_spanish(),
+        "xmltv_live_on_air": state.catalog.xmltv_live_on_air(),
     }
 
 
@@ -759,10 +788,14 @@ async def set_filters(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Expected a JSON object")
     hidden = state.catalog.hidden_sports()
     hidden_channels = state.catalog.hidden_channels()
+    # Validate all boolean preferences before committing any of them.
+    for name in ("hide_spanish", "xmltv_live_on_air"):
+        if name in body and not isinstance(body[name], bool):
+            raise HTTPException(status_code=400, detail=f"{name} must be a boolean")
     if "hide_spanish" in body:
-        if not isinstance(body["hide_spanish"], bool):
-            raise HTTPException(status_code=400, detail="hide_spanish must be a boolean")
         state.catalog.set_hide_spanish(body["hide_spanish"])
+    if "xmltv_live_on_air" in body:
+        state.catalog.set_xmltv_live_on_air(body["xmltv_live_on_air"])
     if "hidden" in body and isinstance(body["hidden"], list):
         hidden = [str(item) for item in body["hidden"] if str(item).strip()]
     if "hidden_channels" in body and isinstance(body["hidden_channels"], list):
@@ -788,6 +821,7 @@ async def set_filters(request: Request) -> dict[str, Any]:
         "hidden": state.catalog.hidden_sports(),
         "hidden_channels": state.catalog.hidden_channels(),
         "hide_spanish": state.catalog.hide_spanish(),
+        "xmltv_live_on_air": state.catalog.xmltv_live_on_air(),
         "events": len(visible),
         "all_events": len(watchable),
     }
@@ -802,6 +836,19 @@ async def api_refresh() -> dict[str, Any]:
     except Exception as exc:
         stored = for_ui(state.catalog.meta().get("last_error")) or str(exc)
         raise HTTPException(status_code=502, detail=stored) from exc
+
+
+@app.get("/api/broadcast-evidence")
+async def broadcast_evidence(
+    limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0, le=1000),
+    history: bool = False, include_capture: bool = False,
+) -> dict[str, Any]:
+    state.evidence.prune(datetime.now(timezone.utc))
+    return {"mode": "observe_only", "automatic_exclusions": False,
+            "enabled": settings.detail_evidence,
+            "last_cycle": state.evidence_last_cycle, "error": state.evidence_error,
+            "records": state.evidence.records(limit=limit, offset=offset, history=history,
+                                               include_capture=include_capture)}
 
 
 @app.get("/events")
@@ -855,6 +902,7 @@ async def xmltv_feed(request: Request) -> Response:
         base_url=_public_base_url(request),
         now=datetime.now(timezone.utc),
         include_subtitle=settings.xmltv_include_subtitle,
+        live_on_air=state.catalog.xmltv_live_on_air(),
         station_logos=state.station_logos,
         persisted_logos=state.catalog.station_logos(),
     )

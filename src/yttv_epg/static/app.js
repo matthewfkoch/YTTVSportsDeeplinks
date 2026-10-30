@@ -43,6 +43,17 @@ function confirmLanguage(value) {
   if (languageToggle) languageToggle.checked = value;
   applyEventVisibility();
 }
+const liveOnAirToggle = document.getElementById("xmltv-live-on-air");
+let confirmedLiveOnAir = Boolean(liveOnAirToggle?.defaultChecked);
+if (liveOnAirToggle) liveOnAirToggle.checked = confirmedLiveOnAir;
+boot.liveOnAir = confirmedLiveOnAir;
+
+function confirmLiveOnAir(value) {
+  if (typeof value !== "boolean") return;
+  confirmedLiveOnAir = value;
+  boot.liveOnAir = value;
+  if (liveOnAirToggle) liveOnAirToggle.checked = value;
+}
 let guideBusy = false;
 let reloading = false;
 
@@ -289,6 +300,7 @@ function restoreChipState(snapshot) {
 }
 
 function applyOptimisticFilter(body) {
+  if (liveOnAirToggle && typeof body.xmltv_live_on_air === "boolean") liveOnAirToggle.checked = body.xmltv_live_on_air;
   const languageToggle = document.getElementById("hide-spanish");
   if (languageToggle && typeof body.hide_spanish === "boolean") languageToggle.checked = body.hide_spanish;
   if (body.toggle) {
@@ -368,6 +380,7 @@ async function postFilter(body, message) {
     if (!response.ok) {
       restoreChipState(previous);
       if (languageToggle) languageToggle.checked = confirmedHideSpanish;
+      if (liveOnAirToggle) liveOnAirToggle.checked = confirmedLiveOnAir;
       applyEventVisibility();
       errorEl.textContent = await readError(response);
       hideToast();
@@ -375,6 +388,7 @@ async function postFilter(body, message) {
     }
     const data = await response.json();
     confirmLanguage(data.hide_spanish);
+    confirmLiveOnAir(data.xmltv_live_on_air);
     const countEl = document.getElementById("event-count");
     if (countEl && data.events != null) countEl.textContent = data.events;
     boot.events = String(data.events ?? boot.events);
@@ -383,6 +397,7 @@ async function postFilter(body, message) {
   } catch (exc) {
     restoreChipState(previous);
     if (languageToggle) languageToggle.checked = confirmedHideSpanish;
+    if (liveOnAirToggle) liveOnAirToggle.checked = confirmedLiveOnAir;
     applyEventVisibility();
     errorEl.textContent = exc.message || "Request failed";
     hideToast();
@@ -430,6 +445,7 @@ searchEl?.addEventListener("input", () => {
 });
 
 function statusChanged(status) {
+  if (typeof status.xmltv_live_on_air === "boolean" && status.xmltv_live_on_air !== boot.liveOnAir) return true;
   const lastRefresh = status.last_refresh || "";
   const lastError = status.last_error || "";
   if (typeof status.hide_spanish === "boolean" && status.hide_spanish !== boot.hideSpanish) return true;
@@ -445,6 +461,7 @@ function statusChanged(status) {
 
 function snapshotStatus(status) {
   confirmLanguage(status.hide_spanish);
+  confirmLiveOnAir(status.xmltv_live_on_air);
   boot.lastError = status.last_error || "";
   boot.lastRefresh = status.last_refresh || boot.lastRefresh;
   boot.events = String(status.events ?? boot.events);
@@ -497,4 +514,13 @@ document.getElementById("hide-spanish")?.addEventListener("change", (event) => {
     return;
   }
   postFilter({ hide_spanish: event.target.checked }, "Updating broadcast language…");
+});
+
+
+liveOnAirToggle?.addEventListener("change", (event) => {
+  if (actionInFlight) {
+    event.target.checked = confirmedLiveOnAir;
+    return;
+  }
+  postFilter({ xmltv_live_on_air: event.target.checked }, "Updating Live labeling…");
 });

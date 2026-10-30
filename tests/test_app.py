@@ -911,3 +911,118 @@ def test_independent_channel_filters_update_dashboard_and_feeds(tmp_path, monkey
         assert "Michigan vs Ohio State" in guide
         client.post("/api/filters", json={"toggle_channel": "ViX"})
         assert "Chivas vs America" in client.get("/xmltv.xml").text
+
+
+def test_live_on_air_preference_routes_and_validation(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from yttv_epg import app as module
+    from yttv_epg.lanes import LaneAssignment
+    from yttv_epg.parse import Airing
+
+    now = datetime.now(timezone.utc)
+    game = Airing('abcdefghijk', 'A at B', 'ACC Network', 'event',
+                  now - timedelta(minutes=10), now + timedelta(hours=1),
+                  'https://tv.youtube.com/watch/abcdefghijk')
+    monkeypatch.setattr(module, '_labeled_assignments', lambda: [LaneAssignment(1, game)])
+    with TestClient(app) as client:
+        module.state.catalog.set_xmltv_live_on_air(False)
+        try:
+            assert client.get('/api/filters').json()['xmltv_live_on_air'] is False
+            assert '<live/>' not in client.get('/xmltv.xml').text
+            saved = client.post('/api/filters', json={'xmltv_live_on_air': True})
+            assert saved.json()['xmltv_live_on_air'] is True
+            assert client.get('/api/status').json()['xmltv_live_on_air'] is True
+            assert 'id="xmltv-live-on-air"' in client.get('/').text
+            for route in ('/xmltv.xml', '/epg.xml'):
+                body = client.get(route).text
+                assert '<live/>' in body and '<new/>' not in body
+            client.post('/api/filters', json={})
+            assert client.get('/api/filters').json()['xmltv_live_on_air'] is True
+            old_language = module.state.catalog.hide_spanish()
+            for invalid in ('false', 1, None, []):
+                response = client.post('/api/filters', json={
+                    'hide_spanish': not old_language, 'xmltv_live_on_air': invalid})
+                assert response.status_code == 400
+                assert module.state.catalog.hide_spanish() is old_language
+                assert module.state.catalog.xmltv_live_on_air() is True
+            client.post('/api/filters', json={'xmltv_live_on_air': False})
+            assert '<live/>' not in client.get('/xmltv.xml').text
+        finally:
+            module.state.catalog.set_xmltv_live_on_air(False)
+
+
+def test_broadcast_evidence_endpoint_is_diagnostic_protected_and_not_cached(tmp_path, monkeypatch):
+    import json
+    from datetime import datetime, timezone
+    from pathlib import Path
+    from yttv_epg import app as module
+    from yttv_epg.detail_evidence import EvidenceStore
+    from yttv_epg.parse import Airing
+
+    capture = json.loads((Path(__file__).parent / 'fixtures/acc_replay_detail.json').read_text())
+    game = Airing('VasWEa--oME', 'Virginia Tech at Clemson', 'ACC Network', 'event',
+                  datetime(2026, 10, 28, 11, tzinfo=timezone.utc),
+                  datetime(2026, 10, 28, 14, tzinfo=timezone.utc), '')
+    store = EvidenceStore(tmp_path / 'evidence.sqlite')
+    store.save(game, datetime.now(timezone.utc), capture=capture)
+    monkeypatch.setattr(module.state, 'evidence', store)
+    monkeypatch.setattr(module.settings, 'admin_user', 'admin')
+    monkeypatch.setattr(module.settings, 'admin_password', 'password')
+    with TestClient(app) as client:
+        assert client.get('/api/broadcast-evidence').status_code == 401
+        auth = ('admin', 'password')
+        response = client.get('/api/broadcast-evidence', auth=auth)
+        assert response.headers['cache-control'] == 'no-store'
+        body = response.json()
+        assert body['automatic_exclusions'] is False and body['mode'] == 'observe_only'
+        assert body['records'][0]['evidence']['date_gap_days'] == 4
+        assert 'capture' not in body['records'][0]
+        history = client.get('/api/broadcast-evidence?history=true&include_capture=true', auth=auth).json()
+        assert history['records'][0]['capture'] == capture
+        assert client.get('/api/broadcast-evidence?limit=101', auth=auth).status_code == 422
+        assert client.get('/api/broadcast-evidence?offset=1', auth=auth).json()['records'] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('enabled,busy,signed_in,collects', [
+    (True, False, True, True), (False, False, True, False),
+    (True, True, True, False), (True, False, False, False),
+])
+async def test_evidence_worker_gates_and_cancels(monkeypatch, enabled, busy, signed_in, collects):
+    import asyncio
+    from yttv_epg import app as module
+    from yttv_epg.session_store import SavedSession
+
+    # Drive one background iteration without a real delay or network request.
+    sleep = AsyncMock(side_effect=[None, asyncio.CancelledError()])
+    collect = AsyncMock(return_value=0)
+    monkeypatch.setattr(module.asyncio, 'sleep', sleep)
+    monkeypatch.setattr(module, 'collect_evidence', collect)
+    monkeypatch.setattr(module.settings, 'detail_evidence', enabled)
+    monkeypatch.setattr(module.state, 'refreshing', busy)
+    monkeypatch.setattr(module.state, 'refresh_lock', asyncio.Lock())
+    monkeypatch.setattr(module.state, 'session', SavedSession(kind='browser') if signed_in else None)
+    with pytest.raises(asyncio.CancelledError):
+        await module.evidence_loop()
+    assert collect.await_count == int(collects)
+    assert not module.state.refresh_lock.locked()
+
+
+@pytest.mark.asyncio
+async def test_evidence_failure_does_not_fail_guide_or_kill_worker(monkeypatch):
+    import asyncio
+    from yttv_epg import app as module
+    from yttv_epg.session_store import SavedSession
+
+    monkeypatch.setattr(module.asyncio, 'sleep', AsyncMock(side_effect=[None, None, asyncio.CancelledError()]))
+    collect = AsyncMock(side_effect=[RuntimeError('sensitive'), 0])
+    monkeypatch.setattr(module, 'collect_evidence', collect)
+    monkeypatch.setattr(module.settings, 'detail_evidence', True)
+    monkeypatch.setattr(module.state, 'refreshing', False)
+    monkeypatch.setattr(module.state, 'refresh_lock', asyncio.Lock())
+    monkeypatch.setattr(module.state, 'session', SavedSession(kind='browser'))
+    with pytest.raises(asyncio.CancelledError):
+        await module.evidence_loop()
+    assert collect.await_count == 2
+    assert module.state.evidence_error is None
+    assert not module.state.refresh_lock.locked()

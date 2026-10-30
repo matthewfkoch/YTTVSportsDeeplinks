@@ -1,0 +1,172 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-10-28T21:55:00.122141+00:00",
+  "browse_id": "UCIe2pfmZna1C65-f5BjwwtQ",
+  "video_id": "-4a2OzI7x-4",
+  "watch_metadata": [
+    {
+      "path": "/contents/singleColumnWatchNextResults/results/watchNextTabbedResultsRenderer/videoMetadata/unpluggedVideoMetadataRenderer",
+      "renderer": "unpluggedVideoMetadataRenderer",
+      "fields": {
+        "description": {
+          "runs": [
+            {
+              "text": "Do you dig fast-paced action and intense rallies? Watch today's top college players battle it out for school pride and team glory."
+            }
+          ]
+        },
+        "startTimeSeconds": "1793221147",
+        "endTimeSeconds": "1793228400",
+        "primaryText": {
+          "runs": [
+            {
+              "text": "Rhode Island vs. Fordham"
+            }
+          ]
+        },
+        "navigationEndpoint": {
+          "browseEndpoint": {
+            "browseId": "UCIe2pfmZna1C65-f5BjwwtQ"
+          }
+        }
+      }
+    }
+  ],
+  "details": [
+    {
+      "path": "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedContentDetailsAboutRenderer/contents/1/unpluggedContentDetailsAboutFieldsRenderer",
+      "renderer": "unpluggedContentDetailsAboutFieldsRenderer",
+      "fields": {
+        "description": {
+          "runs": [
+            {
+              "text": "Do you dig fast-paced action and intense rallies? Watch today's top college players battle it out for school pride and team glory."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedContentDetailsAboutRenderer/contents/2/unpluggedContentDetailsAboutFieldsRenderer",
+      "renderer": "unpluggedContentDetailsAboutFieldsRenderer",
+      "fields": {
+        "attributes": [
+          {
+            "runs": [
+              {
+                "text": "On "
+              },
+              {
+                "text": "ESPN"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer",
+      "renderer": "unpluggedCompactVideoRenderer",
+      "fields": {
+        "navigationEndpoint": {
+          "watchEndpoint": {
+            "videoId": "-4a2OzI7x-4"
+          }
+        },
+        "description": {
+          "runs": [
+            {
+              "text": "Do you dig fast-paced action and intense rallies? Watch today's top college players battle it out for school pride and team glory."
+            }
+          ]
+        },
+        "startTimeSeconds": "1793221147",
+        "endTimeSeconds": "1793228400",
+        "primaryText": {
+          "runs": [
+            {
+              "text": "Rhode Island vs. Fordham"
+            }
+          ]
+        },
+        "secondaryText": {
+          "runs": [
+            {
+              "text": "ESPN+"
+            }
+          ]
+        },
+        "badge": {
+          "unpluggedTextBadgeRenderer": {
+            "label": {
+              "runs": [
+                {
+                  "text": "LIVE"
+                }
+              ]
+            },
+            "type": "LIVE"
+          }
+        }
+      }
+    },
+    {
+      "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/0/unpluggedCompactVideoVersionRenderer",
+      "renderer": "unpluggedCompactVideoVersionRenderer",
+      "fields": {
+        "primaryText": {
+          "runs": [
+            {
+              "text": "ESPN+"
+            }
+          ]
+        },
+        "secondaryText": {
+          "runs": [
+            {
+              "text": "LIVE"
+            }
+          ]
+        },
+        "navigationEndpoint": {
+          "watchEndpoint": {
+            "videoId": "-4a2OzI7x-4"
+          }
+        }
+      }
+    },
+    {
+      "path": "/header/unpluggedContentDetailsHeaderRenderer",
+      "renderer": "unpluggedContentDetailsHeaderRenderer",
+      "fields": {
+        "title": {
+          "runs": [
+            {
+              "text": "Rhode Island vs. Fordham"
+            }
+          ]
+        },
+        "contentType": "SPORTS_EVENT",
+        "primaryText": {
+          "runs": [
+            {
+              "text": "Rhode Island vs. Fordham"
+            }
+          ]
+        },
+        "secondaryText": {
+          "runs": [
+            {
+              "text": "Oct 28, 2026"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "control": {
+    "classification": "scheduled_live_corroborated",
+    "source_url": "https://www.livesportsontv.com/match/fordham-rhode-island-1976251",
+    "note": "Manually compared October 28 schedule, matchup and broadcaster. Schedule corroboration is not independent in-game progress confirmation."
+  }
+}

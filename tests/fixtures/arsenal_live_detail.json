@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-10-28T21:55:01.867027+00:00",
+  "browse_id": "UC4xu3Tnfrhe3NQ1LQHpFPLA",
+  "video_id": "fGRTFzKDNAc",
+  "watch_metadata": [
+    {
+      "path": "/contents/singleColumnWatchNextResults/results/watchNextTabbedResultsRenderer/videoMetadata/unpluggedVideoMetadataRenderer",
+      "renderer": "unpluggedVideoMetadataRenderer",
+      "fields": {
+        "description": {
+          "runs": [
+            {
+              "text": "Acción de la jornada 3 de la fase de liga de la UWCL 2026-27. Las Gunners buscan ganar tras empatar y Benfica regresar a la victoria tras caer ante las Bávaras."
+            }
+          ]
+        },
+        "startTimeSeconds": "1793217288",
+        "endTimeSeconds": "1793224800",
+        "primaryText": {
+          "runs": [
+            {
+              "text": "Arsenal vs. Benfica"
+            }
+          ]
+        },
+        "navigationEndpoint": {
+          "browseEndpoint": {
+            "browseId": "UC4xu3Tnfrhe3NQ1LQHpFPLA"
+          }
+        }
+      }
+    }
+  ],
+  "details": [
+    {
+      "path": "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedContentDetailsAboutRenderer/contents/0/unpluggedContentDetailsAboutFieldsRenderer",
+      "renderer": "unpluggedContentDetailsAboutFieldsRenderer",
+      "fields": {
+        "description": {
+          "runs": [
+            {
+              "text": "Acción de la jornada 3 de la fase de liga de la UWCL 2026-27. Las Gunners buscan ganar tras empatar y Benfica regresar a la victoria tras caer ante las Bávaras."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedContentDetailsAboutRenderer/contents/1/unpluggedContentDetailsAboutFieldsRenderer",
+      "renderer": "unpluggedContentDetailsAboutFieldsRenderer",
+      "fields": {
+        "attributes": [
+          {
+            "runs": [
+              {
+                "text": "On "
+              },
+              {
+                "text": "CBS Sports Network, ESPN Deportes"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer",
+      "renderer": "unpluggedCompactVideoRenderer",
+      "fields": {
+        "navigationEndpoint": {
+          "watchEndpoint": {
+            "videoId": "fGRTFzKDNAc"
+          }
+        },
+        "description": {
+          "runs": [
+            {
+              "text": "Acción de la jornada 3 de la fase de liga de la UWCL 2026-27. Las Gunners buscan ganar tras empatar y Benfica regresar a la victoria tras caer ante las Bávaras."
+            }
+          ]
+        },
+        "startTimeSeconds": "1793217288",
+        "endTimeSeconds": "1793224800",
+        "primaryText": {
+          "runs": [
+            {
+              "text": "Arsenal vs. Benfica"
+            }
+          ]
+        },
+        "secondaryText": {
+          "runs": [
+            {
+              "text": "CBS Sports Network"
+            }
+          ]
+        },
+        "badge": {
+          "unpluggedTextBadgeRenderer": {
+            "label": {
+              "runs": [
+                {
+                  "text": "LIVE"
+                }
+              ]
+            },
+            "type": "LIVE"
+          }
+        }
+      }
+    },
+    {
+      "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/0/unpluggedCompactVideoVersionRenderer",
+      "renderer": "unpluggedCompactVideoVersionRenderer",
+      "fields": {
+        "primaryText": {
+          "runs": [
+            {
+              "text": "CBS Sports Network"
+            }
+          ]
+        },
+        "secondaryText": {
+          "runs": [
+            {
+              "text": "LIVE"
+            }
+          ]
+        },
+        "navigationEndpoint": {
+          "watchEndpoint": {
+            "videoId": "fGRTFzKDNAc"
+          }
+        }
+      }
+    },
+    {
+      "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/1/unpluggedCompactVideoVersionRenderer",
+      "renderer": "unpluggedCompactVideoVersionRenderer",
+      "fields": {
+        "primaryText": {
+          "runs": [
+            {
+              "text": "ESPN Deportes"
+            }
+          ]
+        },
+        "secondaryText": {
+          "runs": [
+            {
+              "text": "LIVE"
+            }
+          ]
+        },
+        "navigationEndpoint": {}
+      }
+    },
+    {
+      "path": "/header/unpluggedContentDetailsHeaderRenderer",
+      "renderer": "unpluggedContentDetailsHeaderRenderer",
+      "fields": {
+        "title": {
+          "runs": [
+            {
+              "text": "Arsenal vs. Benfica"
+            }
+          ]
+        },
+        "contentType": "SPORTS_EVENT",
+        "primaryText": {
+          "runs": [
+            {
+              "text": "Arsenal vs. Benfica"
+            }
+          ]
+        },
+        "secondaryText": {
+          "runs": [
+            {
+              "text": "Oct 28, 2026"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "control": {
+    "classification": "scheduled_live_corroborated",
+    "source_url": "https://www.livesportsontv.com/match/arsenal-sl-benfica-1964063",
+    "note": "Manually compared October 28 schedule, matchup and broadcaster. Schedule corroboration is not independent in-game progress confirmation."
+  }
+}

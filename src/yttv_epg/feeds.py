@@ -81,6 +81,7 @@ def lane_logos(
 def xmltv(
     assignments: list[LaneAssignment], lane_count: int, *, base_url: str = "",
     now: datetime | None = None, include_subtitle: bool = False,
+    live_on_air: bool = False,
     station_logos: dict[str, str] | None = None,
     persisted_logos: dict[str, str] | None = None,
 ) -> str:
@@ -126,7 +127,10 @@ def xmltv(
         if row.airing.is_repeat is True:
             lines.append("    <previously-shown/>")
         elif row.airing.end > now:
-            if row.airing.broadcast_live is True:
+            if row.airing.broadcast_live is True or (
+                live_on_air and row.airing.broadcast_live is None
+                and row.airing.start <= now < row.airing.end
+            ):
                 lines.append("    <live/>")
             if row.airing.first_run is True:
                 lines.append("    <new/>")

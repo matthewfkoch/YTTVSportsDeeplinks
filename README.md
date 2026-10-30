@@ -221,6 +221,73 @@ display still requires a manual check on the device.
 
 ## Reliability and broadcast-status details
 
+The dashboard's **Mark on-air programmes Live** switch defaults off. When enabled,
+XMLTV adds Live to unknown-status programmes during their scheduled airing window.
+Explicit repeats and negative Live evidence still win; unidentified replays can
+receive Live. New is unchanged. The preference persists in the catalog and takes
+effect on the next guide request; refresh the Channels DVR guide to import it.
+`XMLTV_LIVE_ON_AIR=false` seeds the preference only when no saved value exists.
+The `/events` source-status fields are not changed by this output preference.
+
+To investigate a specific game without changing classification, run inside the
+signed-in service environment:
+
+```sh
+python -m yttv_epg.detail_probe --video-id WATCH_ID > game-details.json
+# Or use a known game detail page:
+python -m yttv_epg.detail_probe --browse-id BROWSE_ID > game-details.json
+```
+
+The diagnostic reads saved session cookies and fetches metadata only, without
+starting playback or changing the catalog. It outputs selected programme fields,
+capture time, and source paths, excluding credentials and tracking tokens. If the
+saved cookies have expired, refresh the session in the dashboard first. Capture a
+known live game and a replay near the same time for comparison. The captured ACC
+replay fixture demonstrates why `SPORTS_EVENT` and a LIVE badge alone are not
+confirmation. Event dates and detail-page badges remain diagnostic only.
+
+Background evidence collection is enabled by `DETAIL_EVIDENCE=true`. A separate
+worker checks every 30 seconds, defers to guide refreshes, and collects at most
+two due airings per pass from current and next-24-hour events across all channels.
+It uses the existing authenticated request path. Known detail IDs are tried first;
+missing IDs or unmatched pages fall back to the watch-metadata lookup. Each
+capture attempt has a 10-second timeout (at most two attempts per airing).
+
+The separate `broadcast-evidence.sqlite` cache survives restarts. Current airings
+refresh after five minutes; upcoming airings after an hour or when they start,
+whichever comes first. Failures retry after five minutes and retain the last good
+capture, marked stale. Cache keys include the programme, station, IDs, and full
+broadcast interval so a rolling channel watch ID cannot transfer evidence to a
+different airing. Successful observations are also saved as history. Both cache
+and history retain at most 1,000 records for seven days, pruned during collection
+and inspection.
+
+Inspect `/api/broadcast-evidence` for cached facts, matching results, date gaps,
+badge observations, timestamps, staleness, and error categories. Add
+`?history=true&include_capture=true` for the sanitized historical captures;
+`limit` (1–100) and `offset` paginate results. This endpoint uses dashboard admin
+authentication when configured and disables HTTP caching. `last_cycle` reports
+worker progress; top-level `error` reports worker failures, while record errors
+describe individual fetch failures. Setting `DETAIL_EVIDENCE=false` stops new
+collection without erasing existing evidence.
+
+Channel matching ignores recognized detail-page language prefixes (`ES`, `EN`)
+and trailing TV ratings separated by `•`. Other channel text is preserved.
+Unmatched records include up to five closest candidates with source paths and
+the fields that did not match; show titles are not treated as episode titles.
+Explicit description openings such as “Replays of” or “Replay:” produce an
+`explicit_replay_description` signal, with the matched phrase, description, and
+source path in `description_evidence`. Mentions of instant replay during coverage
+do not produce this signal. These observations do not exclude programmes.
+
+Only exact normalized title, canonical station, start/end times, and compatible
+watch IDs associate a detail card with a broadcast. Header dates are used only
+for a matching event title and `SPORTS_EVENT` type. Missing or conflicting matches
+stay unmatched. **All results are observations: no automatic replay exclusions,
+Live/New changes, or recording decisions use this evidence.** A same-day event
+date is not Live confirmation; an older date remains a diagnostic signal pending
+validation of overnight events, multi-day events, and same-day replays.
+
 The dashboard waits for filter-save acknowledgement before accepting background
 status responses or reloading. Failed saves restore the server-confirmed setting
 and display an error. Dashboard/status/filter responses are not cached, and the
@@ -264,3 +331,12 @@ feeds not present during migration are included until individually excluded.
 New installations and `HIDDEN_CHANNELS` defaults use individual identities.
 The `/api/filters` interface is unchanged, with individual channel names in its
 channel lists. Refresh the Channels DVR M3U source and XMLTV after updating.
+
+Spanish description evidence distinguishes explicit repeats (`Repetición del
+partido`, `Reemisión:`), highlights (`Compacto de la fecha`, `Los momentos más
+destacados del partido`), and dated match descriptions (`Disputado el …`). Each
+signal retains its source phrase and renderer path. A dated description alone
+is not classified as a replay, and mentions of instant replay or live
+`retransmisión` are not treated as repeat evidence. When a described match date
+precedes its scheduled airing, the record adds `historical_match_description`
+with the parsed date. Automatic exclusions remain disabled.

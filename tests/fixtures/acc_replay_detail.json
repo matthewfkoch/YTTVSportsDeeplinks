@@ -1,0 +1,308 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-10-28T12:01:07.793840+00:00",
+  "browse_id": "UC7bbTstE5S0SaI7zQDZs-0w",
+  "video_id": "VasWEa--oME",
+  "watch_metadata": [
+    {
+      "path": "/contents/singleColumnWatchNextResults/results/watchNextTabbedResultsRenderer/videoMetadata/unpluggedVideoMetadataRenderer",
+      "renderer": "unpluggedVideoMetadataRenderer",
+      "fields": {
+        "description": {
+          "runs": [
+            {
+              "text": "The Clemson Tigers clash with the Virginia Tech Hokies. Clemson looks to Gideon Davidson following his 59-yard, 1-touchdown rushing game, while Virginia Tech relies on Ethan Grunkemeyer coming off his 250-yard, 3-TD outing in the Oct 17 game."
+            }
+          ]
+        },
+        "startTimeSeconds": "1793185200",
+        "endTimeSeconds": "1793196000",
+        "primaryText": {
+          "runs": [
+            {
+              "text": "Virginia Tech at Clemson"
+            }
+          ]
+        },
+        "navigationEndpoint": {
+          "browseEndpoint": {
+            "browseId": "UC7bbTstE5S0SaI7zQDZs-0w"
+          }
+        }
+      }
+    }
+  ],
+  "details": [
+    {
+      "path": "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/unpluggedContentDetailsRenderer/renderers/unpluggedContentDetailsAboutRenderer/contents/1/unpluggedContentDetailsAboutFieldsRenderer",
+      "renderer": "unpluggedContentDetailsAboutFieldsRenderer",
+      "fields": {
+        "description": {
+          "runs": [
+            {
+              "text": "The Clemson Tigers clash with the Virginia Tech Hokies. Clemson looks to Gideon Davidson following his 59-yard, 1-touchdown rushing game, while Virginia Tech relies on Ethan Grunkemeyer coming off his 250-yard, 3-TD outing in the Oct 17 game."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer",
+      "renderer": "unpluggedCompactVideoRenderer",
+      "fields": {
+        "navigationEndpoint": {
+          "watchEndpoint": {
+            "videoId": "VasWEa--oME"
+          }
+        },
+        "description": {
+          "runs": [
+            {
+              "text": "The Clemson Tigers clash with the Virginia Tech Hokies. Clemson looks to Gideon Davidson following his 59-yard, 1-touchdown rushing game, while Virginia Tech relies on Ethan Grunkemeyer coming off his 250-yard, 3-TD outing in the Oct 17 game."
+            }
+          ]
+        },
+        "startTimeSeconds": "1793185200",
+        "endTimeSeconds": "1793196000",
+        "primaryText": {
+          "runs": [
+            {
+              "text": "Virginia Tech at Clemson"
+            }
+          ]
+        },
+        "secondaryText": {
+          "runs": [
+            {
+              "text": "ACC Network"
+            }
+          ]
+        },
+        "badge": {
+          "unpluggedTextBadgeRenderer": {
+            "label": {
+              "runs": [
+                {
+                  "text": "LIVE"
+                }
+              ]
+            },
+            "type": "LIVE"
+          }
+        }
+      }
+    },
+    {
+      "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/0/unpluggedCompactVideoVersionRenderer",
+      "renderer": "unpluggedCompactVideoVersionRenderer",
+      "fields": {
+        "primaryText": {
+          "runs": [
+            {
+              "text": "ACC Network"
+            }
+          ]
+        },
+        "secondaryText": {
+          "runs": [
+            {
+              "text": "LIVE"
+            }
+          ]
+        },
+        "navigationEndpoint": {
+          "watchEndpoint": {
+            "videoId": "VasWEa--oME"
+          }
+        }
+      }
+    },
+    {
+      "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/1/unpluggedCompactVideoVersionRenderer",
+      "renderer": "unpluggedCompactVideoVersionRenderer",
+      "fields": {
+        "primaryText": {
+          "runs": [
+            {
+              "text": "ACC Network"
+            }
+          ]
+        },
+        "secondaryText": {
+          "runs": [
+            {
+              "text": "Upcoming • Today, 10:00 PM"
+            }
+          ]
+        },
+        "navigationEndpoint": {}
+      }
+    },
+    {
+      "path": "/contents/singleColumnBrowseResultsRenderer/tabs/1/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/0/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/2/unpluggedCompactVideoVersionRenderer",
+      "renderer": "unpluggedCompactVideoVersionRenderer",
+      "fields": {
+        "primaryText": {
+          "runs": [
+            {
+              "text": "ACC Network"
+            }
+          ]
+        },
+        "secondaryText": {
+          "runs": [
+            {
+              "text": "Upcoming • Fri, Oct 30, 7:00 AM"
+            }
+          ]
+        },
+        "navigationEndpoint": {}
+      }
+    },
+    {
+      "path": "/contents/singleColumnBrowseResultsRenderer/tabs/2/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/1/unpluggedCompactVideoRenderer",
+      "renderer": "unpluggedCompactVideoRenderer",
+      "fields": {
+        "navigationEndpoint": {
+          "watchEndpoint": {
+            "videoId": "VasWEa--oME"
+          }
+        },
+        "description": {
+          "runs": [
+            {
+              "text": "The Clemson Tigers clash with the Virginia Tech Hokies. Clemson looks to Gideon Davidson following his 59-yard, 1-touchdown rushing game, while Virginia Tech relies on Ethan Grunkemeyer coming off his 250-yard, 3-TD outing in the Oct 17 game."
+            }
+          ]
+        },
+        "startTimeSeconds": "1793185200",
+        "endTimeSeconds": "1793196000",
+        "primaryText": {
+          "runs": [
+            {
+              "text": "Virginia Tech at Clemson"
+            }
+          ]
+        },
+        "secondaryText": {
+          "runs": [
+            {
+              "text": "ACC Network"
+            }
+          ]
+        },
+        "badge": {
+          "unpluggedTextBadgeRenderer": {
+            "label": {
+              "runs": [
+                {
+                  "text": "LIVE"
+                }
+              ]
+            },
+            "type": "LIVE"
+          }
+        }
+      }
+    },
+    {
+      "path": "/contents/singleColumnBrowseResultsRenderer/tabs/2/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/1/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/0/unpluggedCompactVideoVersionRenderer",
+      "renderer": "unpluggedCompactVideoVersionRenderer",
+      "fields": {
+        "primaryText": {
+          "runs": [
+            {
+              "text": "ACC Network"
+            }
+          ]
+        },
+        "secondaryText": {
+          "runs": [
+            {
+              "text": "LIVE"
+            }
+          ]
+        },
+        "navigationEndpoint": {
+          "watchEndpoint": {
+            "videoId": "VasWEa--oME"
+          }
+        }
+      }
+    },
+    {
+      "path": "/contents/singleColumnBrowseResultsRenderer/tabs/2/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/1/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/1/unpluggedCompactVideoVersionRenderer",
+      "renderer": "unpluggedCompactVideoVersionRenderer",
+      "fields": {
+        "primaryText": {
+          "runs": [
+            {
+              "text": "ACC Network"
+            }
+          ]
+        },
+        "secondaryText": {
+          "runs": [
+            {
+              "text": "Upcoming • Today, 10:00 PM"
+            }
+          ]
+        },
+        "navigationEndpoint": {}
+      }
+    },
+    {
+      "path": "/contents/singleColumnBrowseResultsRenderer/tabs/2/tabRenderer/content/sectionListRenderer/contents/0/shelfRenderer/content/verticalListRenderer/items/1/unpluggedCompactVideoRenderer/videoVersionList/unpluggedVideoVersionListRenderer/contents/2/unpluggedCompactVideoVersionRenderer",
+      "renderer": "unpluggedCompactVideoVersionRenderer",
+      "fields": {
+        "primaryText": {
+          "runs": [
+            {
+              "text": "ACC Network"
+            }
+          ]
+        },
+        "secondaryText": {
+          "runs": [
+            {
+              "text": "Upcoming • Fri, Oct 30, 7:00 AM"
+            }
+          ]
+        },
+        "navigationEndpoint": {}
+      }
+    },
+    {
+      "path": "/header/unpluggedContentDetailsHeaderRenderer",
+      "renderer": "unpluggedContentDetailsHeaderRenderer",
+      "fields": {
+        "title": {
+          "runs": [
+            {
+              "text": "Virginia Tech at Clemson"
+            }
+          ]
+        },
+        "contentType": "SPORTS_EVENT",
+        "primaryText": {
+          "runs": [
+            {
+              "text": "Virginia Tech at Clemson"
+            }
+          ]
+        },
+        "secondaryText": {
+          "runs": [
+            {
+              "text": "Oct 24, 2026"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "control": {
+    "classification": "replay",
+    "basis": "User identified ACC Network football rebroadcast; detail header dates event October 24 while airing October 28."
+  }
+}

@@ -128,6 +128,11 @@
         </label>
       </div>
       <p class="muted">Choose which sports appear in the guide. Event times use {{ time_zone }}.</p>
+      <label class="broadcast-toggle">
+        <input id="xmltv-live-on-air" type="checkbox" role="switch" aria-describedby="live-on-air-help" {% if xmltv_live_on_air %}checked{% endif %}>
+        <span>Mark on-air programmes Live</span>
+      </label>
+      <p class="muted" id="live-on-air-help">Include currently airing programmes when Live status is unknown. Confirmed replays stay excluded; unidentified replays may be labeled Live. New is unchanged. Refresh your Channels DVR guide after changing this setting.</p>
       {% if sports %}
       <div class="row filter-actions">
         <button id="select-sports" class="secondary" type="button">Select all</button>

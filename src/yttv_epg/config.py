@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     mine_concurrency: int = Field(default=4, validation_alias="MINE_CONCURRENCY")
     hide_spanish: bool = Field(default=False, validation_alias="HIDE_SPANISH")
     xmltv_include_subtitle: bool = Field(default=False, validation_alias="XMLTV_INCLUDE_SUBTITLE")
+    xmltv_live_on_air: bool = Field(default=False, validation_alias="XMLTV_LIVE_ON_AIR")
     station_logos_file: Path = Field(default=Path("/data/station-logos.json"), validation_alias="STATION_LOGOS_FILE")
     hidden_sports: str = Field(default="", validation_alias="HIDDEN_SPORTS")
     hidden_channels: str = Field(default="", validation_alias="HIDDEN_CHANNELS")
@@ -50,6 +51,7 @@ class Settings(BaseSettings):
         default=14400,
         validation_alias="CHROME_KEEPALIVE_SECONDS",
     )
+    detail_evidence: bool = Field(default=True, validation_alias="DETAIL_EVIDENCE")
     espn_schedule: bool = Field(default=True, validation_alias="ESPN_SCHEDULE")
     cdp_url: str = Field(default="http://127.0.0.1:9222", validation_alias="CDP_URL")
     novnc_port: int = Field(default=7900, validation_alias="NOVNC_PORT")
