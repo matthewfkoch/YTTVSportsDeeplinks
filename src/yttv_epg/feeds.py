@@ -132,6 +132,8 @@ def xmltv(
                 and row.airing.start <= now < row.airing.end
             ):
                 lines.append("    <live/>")
+            if "premiere" in row.airing.gracenote_flags:
+                lines.append("    <premiere/>")
             if row.airing.first_run is True:
                 lines.append("    <new/>")
         if row.airing.deeplink:

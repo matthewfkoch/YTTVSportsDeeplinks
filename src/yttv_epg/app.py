@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import secrets
+from dataclasses import replace
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -28,6 +29,7 @@ from yttv_epg.detail_evidence import EvidenceStore, collect_evidence
 from yttv_epg.resolution import unresolved_soon
 from yttv_epg.display import format_refresh, group_events_for_ui, local_tz
 from yttv_epg.espn_schedule import apply_espn_sports, fetch_espn_schedule
+from yttv_epg.gracenote import apply_gracenote, load_grid
 from yttv_epg.feeds import apituner_export, m3u, whatson_payload, xmltv
 from yttv_epg.innertube import CLIENTS, InnerTubeClient, MineError, session_expired_message
 from yttv_epg.lanes import LaneAssignment, pack_lanes, whatson
@@ -183,7 +185,8 @@ def _labeled_assignments() -> list[LaneAssignment]:
     rows = state.lane_assignments or []
     if state.catalog.hide_spanish():
         rows = [row for row in rows if broadcast_language(row.airing) != "es"]
-    return rows
+    enriched = apply_gracenote([row.airing for row in rows], load_grid(settings.gracenote_grid_file))
+    return [replace(row, airing=airing) for row, airing in zip(rows, enriched)]
 
 
 async def _refresh_espn_listings(force: bool = False) -> bool:
@@ -867,6 +870,7 @@ async def list_events(kind: str = Query("event")) -> dict[str, Any]:
                 and is_sports_event(item.station, item.title, item.sport)
             )
         ]
+    rows = apply_gracenote(rows, load_grid(settings.gracenote_grid_file))
     return {"count": len(rows), "events": [item.to_dict() for item in rows]}
 
 

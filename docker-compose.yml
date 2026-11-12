@@ -24,6 +24,7 @@ services:
       XMLTV_INCLUDE_SUBTITLE: ${XMLTV_INCLUDE_SUBTITLE:-false}
       DETAIL_EVIDENCE: ${DETAIL_EVIDENCE:-true}
       XMLTV_LIVE_ON_AIR: ${XMLTV_LIVE_ON_AIR:-false}
+      GRACENOTE_GRID_FILE: ${GRACENOTE_GRID_FILE:-/data/gracenote-grid.json}
       STATION_LOGOS_FILE: ${STATION_LOGOS_FILE:-/data/station-logos.json}
       HIDE_SPANISH: ${HIDE_SPANISH:-false}
       HIDDEN_SPORTS: ${HIDDEN_SPORTS:-}

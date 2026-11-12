@@ -118,6 +118,7 @@ class Airing:
     broadcast_live: bool | None = None
     first_run: bool | None = None
     is_repeat: bool | None = None
+    gracenote_flags: tuple[str, ...] = ()
 
     def watch_id(self) -> str:
         return self.video_id if _ok_video_id(self.video_id) else ""
@@ -146,6 +147,7 @@ class Airing:
             "broadcast_live": self.broadcast_live,
             "first_run": self.first_run,
             "is_repeat": self.is_repeat,
+            "gracenote_flags": list(self.gracenote_flags),
         }
 
 

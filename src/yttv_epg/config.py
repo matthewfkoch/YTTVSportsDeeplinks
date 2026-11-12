@@ -52,6 +52,7 @@ class Settings(BaseSettings):
         validation_alias="CHROME_KEEPALIVE_SECONDS",
     )
     detail_evidence: bool = Field(default=True, validation_alias="DETAIL_EVIDENCE")
+    gracenote_grid_file: Optional[Path] = Field(default=None, validation_alias="GRACENOTE_GRID_FILE")
     espn_schedule: bool = Field(default=True, validation_alias="ESPN_SCHEDULE")
     cdp_url: str = Field(default="http://127.0.0.1:9222", validation_alias="CDP_URL")
     novnc_port: int = Field(default=7900, validation_alias="NOVNC_PORT")
