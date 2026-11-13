@@ -195,7 +195,13 @@ git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-A manual run of the Release workflow (no tag) publishes `:dev` only. Do not retag a version that already shipped.
+To verify a release build from `main`, open **Actions → Release → Run workflow**
+and leave **dry_run** enabled (the default). The workflow runs the release tests,
+builds for `linux/amd64` and `linux/arm64`, and verifies both images in an OCI
+archive on the runner. It skips registry login and publishing.
+
+A manual run from `main` with **dry_run** disabled publishes `:dev` only.
+Do not retag a version that already shipped.
 
 ## License
 

@@ -5,12 +5,18 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and verify both Docker architectures without publishing
+        type: boolean
+        default: true
 
 permissions:
   contents: write
   packages: write
 
 env:
+  DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
   REGISTRY: ghcr.io
   # GHCR requires lowercase image names (repository may be mixed-case).
   IMAGE_NAME: ${{ github.repository_owner }}/yttvsportsdeeplinks
@@ -37,13 +43,14 @@ jobs:
         run: pytest -q
 
   publish-docker:
-    name: Publish Docker image
+    name: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'Build and verify Docker image' || 'Publish Docker image' }}
     needs: [test]
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
 
       - name: Resolve version tags
+        if: env.DRY_RUN != 'true'
         id: meta
         run: |
           image="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')/yttvsportsdeeplinks"
@@ -58,6 +65,7 @@ jobs:
           fi
 
       - name: Log in to GitHub Container Registry
+        if: env.DRY_RUN != 'true'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -70,21 +78,58 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build and push
+      - name: Build release image
         id: docker
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
-          push: true
+          push: ${{ env.DRY_RUN != 'true' }}
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: ${{ env.DRY_RUN != 'true' && 'type=gha,mode=max' || '' }}
           provenance: false
+          outputs: ${{ env.DRY_RUN == 'true' && format('type=oci,dest={0}/release-image.tar', runner.temp) || '' }}
+
+      - name: Verify both architectures in the local OCI archive
+        if: env.DRY_RUN == 'true'
+        env:
+          OCI_ARCHIVE: ${{ runner.temp }}/release-image.tar
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import tarfile
+
+          with tarfile.open(os.environ["OCI_ARCHIVE"]) as archive:
+              def read(member):
+                  return json.load(archive.extractfile(member))
+
+              def read_blob(descriptor):
+                  return read("blobs/" + descriptor["digest"].replace(":", "/", 1))
+
+              def platforms(index):
+                  for entry in index["manifests"]:
+                      blob = read_blob(entry)
+                      if "manifests" in blob:
+                          yield from platforms(blob)
+                      else:
+                          config = read_blob(blob["config"])
+                          yield config["os"] + "/" + config["architecture"]
+
+              actual = set(platforms(read("index.json")))
+              expected = {"linux/amd64", "linux/arm64"}
+              if actual != expected:
+                  raise SystemExit(f"Expected {sorted(expected)}, found {sorted(actual)}")
+              for platform in sorted(actual):
+                  print(f"Verified local OCI image: {platform}")
+          PY
+
+          echo 'Verified `linux/amd64` and `linux/arm64` without publishing.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Job summary
-        if: always()
+        if: always() && env.DRY_RUN != 'true'
         run: |
           if [[ "${{ job.status }}" == "success" ]]; then
             status="✅ Published"
@@ -121,7 +166,7 @@ jobs:
     name: Publish GitHub Release
     needs: [publish-docker]
     runs-on: ubuntu-26.04
-    if: github.ref_type == 'tag'
+    if: github.ref_type == 'tag' && (github.event_name != 'workflow_dispatch' || !inputs.dry_run)
     steps:
       - uses: actions/checkout@v7
 
