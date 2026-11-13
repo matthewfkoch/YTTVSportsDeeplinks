@@ -14,6 +14,7 @@ from yttv_epg.broadcasts import merged_status
 from yttv_epg.resolution import unresolved_soon
 from yttv_epg.languages import broadcast_language
 from yttv_epg.parse import (
+    GAME_CARD_ZONE,
     Airing,
     discover_browse_tabs,
     discover_event_hubs,
@@ -26,6 +27,7 @@ from yttv_epg.parse import (
 )
 from yttv_epg.session import innertube_headers
 from yttv_epg.session_store import SavedSession
+from yttv_epg.sports import channel_identity, norm_name
 
 BROWSE_IDS = ("FEunplugged_epg", "FEunplugged_home", "FEunplugged_main")
 HOME_BROWSE_ID = "FEunplugged_home"
@@ -401,7 +403,8 @@ class InnerTubeClient:
         client: dict[str, str],
         airing: Airing,
     ) -> Airing:
-        if airing.watch_id():
+        existing_watch = airing.watch_id()
+        if existing_watch and airing.start_source != "date":
             return airing
         entity = airing.entity_id
         if not entity:
@@ -412,15 +415,48 @@ class InnerTubeClient:
             if _session_expired(exc):
                 raise
             return airing
-        for found in parse_browse(payload, source=airing.source):
+        found_airings = parse_browse(payload, source=airing.source)
+        if airing.start_source == "date":
+            # A detail page can contain several airings. Use its time only when
+            # it identifies one slot for this listing on the scheduled date.
+            scheduled_day = airing.start.astimezone(GAME_CARD_ZONE).date()
+            matching_game = [
+                row for row in found_airings
+                if row.watch_id()
+                and (not existing_watch or row.watch_id() == existing_watch)
+                and norm_name(row.title) == norm_name(airing.title)
+                and channel_identity(row.station) == channel_identity(airing.station)
+            ]
+            matched = [
+                row for row in matching_game
+                if row.has_scheduled_start
+                and row.start.astimezone(GAME_CARD_ZONE).date() == scheduled_day
+            ]
+            if len(matched) == 1:
+                found = matched[0]
+                keep_end = not airing.end_estimated and airing.end > found.start
+                airing = replace(
+                    airing, start=found.start, start_source=found.start_source,
+                    end=airing.end if keep_end else found.end,
+                    end_estimated=not keep_end and found.end_estimated,
+                )
+                found_airings = matched
+            elif existing_watch:
+                return airing
+            else:
+                found_airings = [row for row in matching_game if not row.has_scheduled_start]
+        for found in found_airings:
             watch = found.watch_id()
             if not watch:
                 continue
+            deeplink = found.deeplink or watch_deeplink(watch)
+            if existing_watch and airing.deeplink and "?vp=" not in deeplink:
+                deeplink = airing.deeplink
             return replace(
                 merged_status(airing, found),
                 video_id=watch,
                 title=airing.title or found.title,
-                deeplink=found.deeplink or watch_deeplink(watch),
+                deeplink=deeplink,
                 sport=airing.sport or found.sport,
                 channel=airing.channel or found.channel,
                 artwork=airing.artwork or found.artwork,

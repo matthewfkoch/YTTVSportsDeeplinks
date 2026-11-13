@@ -5,6 +5,7 @@ import pytest
 
 from yttv_epg.catalog import Catalog
 from yttv_epg.config import Settings
+from yttv_epg.display import event_for_ui
 from yttv_epg.feeds import xmltv
 from yttv_epg.lanes import LaneAssignment
 from yttv_epg.parse import Airing
@@ -32,6 +33,7 @@ def test_live_fallback_boundaries_and_evidence(offset, enabled, status, repeat, 
     programme = ET.fromstring(xmltv([LaneAssignment(1, item)], 1, now=NOW,
                                    live_on_air=enabled)).find("programme")
     assert (programme.find("live") is not None) is expected
+    assert event_for_ui(item, now=NOW, live_on_air=enabled)["show_live"] is (expected and offset <= 0)
     assert programme.find("new") is None
     assert item.broadcast_live is status
     assert (programme.find("previously-shown") is not None) is (repeat is True)

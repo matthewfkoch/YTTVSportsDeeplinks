@@ -29,6 +29,7 @@ from yttv_epg.sports import (
 )
 
 VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+GAME_CARD_ZONE = ZoneInfo("America/New_York")
 ENTITY_ID_RE = re.compile(r"^UC[A-Za-z0-9_-]{20,}$")
 GAME_WHEN_SPLIT_RE = re.compile(r"\s*[•·|]\s*")
 TRAILING_FOOTBALL_RE = re.compile(r"\s+football$", re.I)
@@ -119,6 +120,12 @@ class Airing:
     first_run: bool | None = None
     is_repeat: bool | None = None
     gracenote_flags: tuple[str, ...] = ()
+    start_source: str = "guide"
+    end_estimated: bool = False
+
+    @property
+    def has_scheduled_start(self) -> bool:
+        return self.start_source not in {"date", "estimated", "legacy"}
 
     def watch_id(self) -> str:
         return self.video_id if _ok_video_id(self.video_id) else ""
@@ -137,6 +144,8 @@ class Airing:
             "entity_id": self.entity_id,
             "start": self.start.astimezone(timezone.utc).isoformat(),
             "end": self.end.astimezone(timezone.utc).isoformat(),
+            "start_source": self.start_source,
+            "end_estimated": self.end_estimated,
             "deeplink": self.deeplink,
             "live": self.live,
             "source": self.source,
@@ -181,6 +190,7 @@ def _prefer_linear_simulcasts(airings: list[Airing]) -> list[Airing]:
         airings,
         key=lambda item: (
             0 if item.watch_id() else 1,
+            not item.has_scheduled_start,
             0 if "?vp=" in item.deeplink else 1,
             outlet_rank(item.station, item.title, item.channel),
             -len(item.title),
@@ -232,6 +242,17 @@ def _same_matchup_slot(left: Airing, right: Airing) -> bool:
         return False
     if _matchup_key(left.title) != _matchup_key(right.title):
         return False
+    if not left.has_scheduled_start or not right.has_scheduled_start:
+        same_listing = (
+            left.watch_id() and left.watch_id() == right.watch_id()
+            or left.entity_id and left.entity_id == right.entity_id
+        )
+        return (
+            bool(same_listing)
+            and left.start.astimezone(GAME_CARD_ZONE).date() == right.start.astimezone(GAME_CARD_ZONE).date()
+            and channel_identity(left.station) == channel_identity(right.station)
+            and (not left.has_scheduled_start or right.has_scheduled_start)
+        )
     overlap = (min(left.end, right.end) - max(left.start, right.start)).total_seconds()
     return overlap >= 15 * 60
 
@@ -263,6 +284,10 @@ def _better_airing(candidate: Airing, current: Airing) -> bool:
     cur_game = _game_listing(current)
     if cand_game != cur_game:
         return cand_game
+    if candidate.has_scheduled_start != current.has_scheduled_start:
+        return candidate.has_scheduled_start
+    if candidate.end_estimated != current.end_estimated:
+        return not candidate.end_estimated
     cand_vp = "?vp=" in candidate.deeplink
     cur_vp = "?vp=" in current.deeplink
     if cand_vp != cur_vp:
@@ -330,6 +355,7 @@ class _WalkCtx:
     station: str = ""
     start: Optional[datetime] = None
     end: Optional[datetime] = None
+    start_source: str = "guide"
     live: bool = False
     row_kind: str = ""
     sport: str = ""
@@ -501,9 +527,9 @@ def _to_airing(
         title = (ctx.title or f"YTTV {video_id}").strip()
     station = clean_station(ctx.station, title)
     start = ctx.start or now
-    end = ctx.end or (start + timedelta(minutes=fallback_minutes))
-    if end <= start:
-        end = start + timedelta(minutes=fallback_minutes)
+    start_source = ctx.start_source if ctx.start else "estimated"
+    explicit_end = ctx.end if ctx.end and ctx.end > start else None
+    end = explicit_end or (start + timedelta(minutes=fallback_minutes))
     kind = _classify(station, title, ctx.sport, ctx.tab)
     watch = video_id if _ok_video_id(video_id) else ""
     entity_id = ctx.entity_id
@@ -516,8 +542,10 @@ def _to_airing(
         kind=kind,
         start=_as_utc(start),
         end=_as_utc(end),
+        start_source=start_source,
+        end_estimated=explicit_end is None,
         deeplink=watch_deeplink(watch, watch_params),
-        live=ctx.live or start <= now < end,
+        live=ctx.live or (start_source == "guide" and start <= now < end),
         source=source,
         sport=ctx.sport or infer_sport(title, station),
         entity_id=entity_id,
@@ -554,18 +582,15 @@ def _airing_from_game_card(
         return None
     if is_junk(title, station):
         return None
-    start = (
-        _time_from_node(card, ("startTime", "startTimeUtc", "startTimeSeconds", "beginTimeMs"))
-        or _parse_game_card_start(when_text, now)
-    )
+    start = _time_from_node(card, ("startTime", "startTimeUtc", "startTimeSeconds", "beginTimeMs")) or ctx.start
+    start_source = "guide"
     if start is None:
-        if _is_live(card):
-            start = now
-        else:
+        start = _parse_game_card_start(when_text, now)
+        start_source = "date" if start else "estimated"
+        if start is None and not _is_live(card):
             return None
-    end = _time_from_node(card, ("endTime", "endTimeUtc", "endTimeSeconds", "endTimeMs"))
-    if end is None or end <= start:
-        end = start + timedelta(minutes=fallback_minutes)
+    start = start or now
+    end = _time_from_node(card, ("endTime", "endTimeUtc", "endTimeSeconds", "endTimeMs")) or ctx.end
     sport = sport_hint or ctx.sport
     if sport:
         inferred = infer_sport(f"{sport} {title}", station)
@@ -592,6 +617,7 @@ def _airing_from_game_card(
             station=station,
             start=start,
             end=end,
+            start_source=start_source,
             live=_is_live(card),
             sport=sport or "",
             tab=ctx.tab,
@@ -599,7 +625,7 @@ def _airing_from_game_card(
             artwork=artwork,
             artwork_secondary=artwork_secondary,
             artwork_score=artwork_score,
-            **programme_badges(card, sports_card=True),
+            **programme_badges(card),
             language=(_language_from_node(card, station)
                       or (ctx.language if station_key(station) == station_key(ctx.station) else "")
                       or detect_language(station, when_text, _text(card.get("secondaryText")))),
@@ -662,7 +688,7 @@ def _parse_game_card_start(text: str, now: datetime) -> Optional[datetime]:
     when = parts[0] if parts else (text or "").strip()
     if not when:
         return None
-    zone = ZoneInfo("America/New_York")
+    zone = GAME_CARD_ZONE
     local = now.astimezone(zone)
     when = re.sub(r"^(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s+", "", when, flags=re.I)
     lowered = when.lower()
@@ -672,17 +698,23 @@ def _parse_game_card_start(text: str, now: datetime) -> Optional[datetime]:
         day = local.date() + timedelta(days=1)
     else:
         parsed = None
-        for fmt in ("%b %d", "%B %d"):
+        # Use a leap year to read the month and day before inferring the year.
+        for fmt in ("%b %d %Y", "%B %d %Y"):
             try:
-                parsed = datetime.strptime(when.replace(".", ""), fmt).replace(year=local.year)
+                parsed = datetime.strptime(f"{when.replace('.', '')} 2000", fmt)
                 break
             except ValueError:
-                parsed = None
+                continue
         if parsed is None:
             return None
-        day = parsed.date()
-        if day < (local.date() - timedelta(days=14)):
-            day = day.replace(year=local.year + 1)
+        cutoff = local.date() - timedelta(days=14)
+        year = local.year
+        if year == cutoff.year and (parsed.month, parsed.day) < (cutoff.month, cutoff.day):
+            year += 1
+        try:
+            day = parsed.date().replace(year=year)
+        except ValueError:
+            return None
     return datetime(day.year, day.month, day.day, 12, 0, tzinfo=zone).astimezone(timezone.utc)
 
 

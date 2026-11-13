@@ -85,7 +85,52 @@ Lane URLs:
 http://<yttvsportsdeeplinks>:8095/whatson/1?format=json&include=deeplink&dynamic_url_json_key=deeplink_url
 ```
 
-Upcoming events often have no watch ID until they are close to air. Those stay out of the EPG, lanes, and XMLTV until a `tv.youtube.com/watch/…` link exists.
+Upcoming events often get a watch ID close to airtime. A virtual lane and its
+XMLTV programme require both a watch link and a scheduled start. Date-only
+listings appear as **Time TBD** in the dashboard until a matching schedule
+supplies a start. When only the end is missing, the guide uses an estimated duration.
+After upgrading, the app shows old catalog times as **Time TBD** and leaves those
+programmes out of XMLTV until a full guide refresh succeeds.
+
+### APITuner with Channels DVR
+
+1. Download `http://<sports-host>:8095/api/export` and import that JSON on
+   APITuner's **Channels** page. Use a sports app address that APITuner can
+   reach. Set `PUBLIC_BASE_URL` before exporting if the dashboard address
+   differs from the address APITuner should use.
+2. In Channels DVR, add a **Custom Channels** source using **MPEG-TS** and this
+   M3U URL from APITuner. If you renamed the provider, use its URL-encoded name.
+
+   ```text
+   http://<apituner-host>:6592/channels.m3u?provider=youtube_tv
+   ```
+
+3. In the same source, set **XMLTV Guide Data** to
+   `http://<sports-host>:8095/xmltv.xml`. The playlist's `tvg-id` values
+   (`yttv-sports-1`, `yttv-sports-2`, and so on) match the guide's channel
+   IDs. Leave Gracenote station IDs blank for these virtual lanes.
+4. Refresh the sports guide, then refresh the source and XMLTV guide in Channels.
+
+APITuner looks up the current game at tune time and supplies the video stream
+to Channels. This app's `/playlist.m3u` contains JSON resolver URLs for tuners.
+See the [APITuner setup guide](https://github.com/matthewfkoch/APITuner#configure-channels)
+for Android TV and encoder setup.
+
+### Change the lane count
+
+In the dashboard's **Guide** card, set **Lane count** and click **Save**.
+Raise the count if overlapping events are being dropped, or lower it to reduce
+the number of virtual channels. Saving immediately rebuilds lane assignments and
+updates the feeds. Retained lanes keep their IDs and channel numbers.
+
+If you use APITuner, download the updated channel export. When increasing the
+count, import only the new lane entries to avoid duplicating existing channels.
+When decreasing it, remove the retired sports lanes from APITuner. Then refresh
+the Channels DVR source and its XMLTV guide.
+
+The dashboard accepts 1–750 lanes, with higher values available if your existing
+configuration already allows them. The saved count persists in the data volume
+and takes precedence over `LANE_COUNT`.
 
 ## Optional env
 
@@ -93,7 +138,7 @@ Upcoming events often have no watch ID until they are close to air. Those stay o
 | --- | --- |
 | `YTTV_EPG_SECRET` | Encrypts the session file. If unset, a key is created in the volume. |
 | `PUBLIC_BASE_URL` | Host written into M3U / APITuner export. Loopback defaults follow the request host. |
-| `LANE_COUNT` | Virtual channels (default 128). Raise this if overlapping events are dropped. |
+| `LANE_COUNT` | Default virtual channel count (128) until you save a count in the dashboard. |
 | `START_CHANNEL` | First export number (default 9100) |
 | `XMLTV_INCLUDE_SUBTITLE` | Include the network name as a programme subtitle (default `false`). The network remains in the description. |
 | `STATION_LOGOS_FILE` | Optional station-to-logo JSON file inside the container (default `/data/station-logos.json`). Restart after changes. |
@@ -135,11 +180,9 @@ Apache License 2.0. See [LICENSE](LICENSE).
 
 ## Channels DVR guide metadata
 
-All programmes include Sports metadata. Live and New now require separate
-programme-specific evidence and are omitted once the scheduled end passes.
-Confirmed repeats include previously-shown metadata and remain playable; unknown
-broadcasts receive no assumed Live or New flags. A linear stream being on air
-does not establish that a game is live or first-run.
+All programmes include Sports metadata. By default, Live and New require
+separate programme-specific evidence and expire at the scheduled end.
+Confirmed repeats include previously-shown metadata and remain playable.
 Channels must refresh its guide to receive updated flags.
 
 Network names are omitted from XMLTV subtitles by default so clients such as Android
@@ -212,17 +255,11 @@ After updating, refresh this app's guide and then the YTTV Sports M3U source and
 XMLTV lineup in Channels DVR. Language preference changes rebuild app lanes
 immediately; Channels still needs a source refresh to import the revised guide.
 
-The NFL Network Prime Vision report reproduced an unsupported Live/New assumption
-while a rebroadcast slot was on air. Unknown listings no longer receive those
-flags. This may remove actual live games from filtered collections when YouTube TV
-does not supply reliable programme status. Refresh only the YTTV Sports source and
-XMLTV lineup in Channels after upgrading to replace imported flags. Android title
-display still requires a manual check on the device.
-
 ## Reliability and broadcast-status details
 
 The dashboard's **Mark on-air programmes Live** switch defaults off. When enabled,
-XMLTV adds Live to unknown-status programmes during their scheduled airing window.
+the dashboard and XMLTV label unknown-status programmes Live during their
+scheduled airing window.
 Explicit repeats and negative Live evidence still win; unidentified replays can
 receive Live. New is unchanged. The preference persists in the catalog and takes
 effect on the next guide request; refresh the Channels DVR guide to import it.
@@ -294,14 +331,15 @@ and display an error. Dashboard/status/filter responses are not cached, and the
 script URL changes when its content changes.
 
 `/events` includes nullable `broadcast_live`, `first_run`, and `is_repeat` fields.
-Missing evidence stays `null`, including existing rows after migration. Status is
-not inferred from scheduled times, station names, titles, or first discovery.
-Only direct programme badges are considered: explicit NEW or REPEAT/REPLAY/RERUN
-badges, and LIVE badges attached to event-specific sports game cards. A LIVE badge
-on a linear EPG listing, or a stream-level `isLive`, is not live-sports evidence.
-The NFL regression fixture is a captured normalized `/events` listing, not a raw
-YouTube response; its source first-run/replay fields were unavailable and remain
-unknown. This does not introduce score-based completion detection.
+YouTube TV's LIVE badge describes a stream and can appear on a replay, so its
+broadcast status remains unknown. Explicit NEW and REPEAT, REPLAY, or RERUN
+badges supply programme evidence.
+
+With Docker Compose, an optional Gracenote grid file at
+`/data/gracenote-grid.json` can supply Live, New, repeat, and tape-delay flags.
+Set `GRACENOTE_GRID_FILE` to use another path inside the container. The match
+requires the station, title, start, and end to agree. Explicit repeat flags clear
+both Live and New. Tape-delay flags clear Live.
 
 Session files are saved atomically with restricted permissions. If a session is
 unreadable, the dashboard stays available with a recovery warning. Check the secret

@@ -7,7 +7,7 @@
   <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
   <link rel="icon" type="image/png" href="/static/logo.png">
   <link rel="apple-touch-icon" href="/static/logo.png">
-  <link rel="stylesheet" href="/static/app.css?v=dashboard-4">
+  <link rel="stylesheet" href="/static/app.css?v=dashboard-5">
 </head>
 <body
   data-signed-in="{{ 'true' if signed_in else 'false' }}"
@@ -15,6 +15,7 @@
   data-last-refresh="{{ last_refresh_at }}"
   data-events="{{ event_count }}"
   data-all-events="{{ all_event_count }}"
+  data-filter-revision="{{ filter_revision }}"
   data-refreshing="{{ 'true' if refreshing else 'false' }}"
 >
   <main>
@@ -79,9 +80,17 @@
           <div><dt>Events</dt><dd id="event-count">{{ event_count }}</dd></div>
           <div><dt>All sports</dt><dd>{{ all_event_count }}</dd></div>
           <div><dt>Non-sports</dt><dd>{{ linear_count }}</dd></div>
-          <div><dt>Tuner lanes</dt><dd>{{ lanes_used }} / {{ lane_count }}</dd></div>
+          <div><dt>Lanes used</dt><dd id="lanes-used">{{ lanes_used }} / {{ lane_count }}</dd></div>
         </dl>
-        {% if dropped_events %}<p class="error">{{ dropped_events }} overlapping events exceeded the lane count. Increase <code>LANE_COUNT</code>.</p>{% endif %}
+        <p class="error" id="dropped-events" {% if not dropped_events %}hidden{% endif %}><span id="dropped-count">{{ dropped_events }}</span> overlapping events dropped. Increase the lane count to fit more.</p>
+        <form id="lane-count-form" class="row lane-count-form">
+          <label for="lane-count">Lane count</label>
+          <input id="lane-count" type="number" min="1" max="{{ max_lane_count }}" step="1" value="{{ lane_count }}" required aria-describedby="lane-count-help">
+          <button id="save-lane-count" class="secondary" type="submit">Save</button>
+        </form>
+        <p class="muted" id="lane-count-help">After changing the count, add or remove the affected lanes in APITuner, then refresh the Channels DVR source and XMLTV guide. <a href="/api/export">Download channel export</a></p>
+        <p id="lane-count-status" class="muted" role="status" hidden></p>
+        <p id="lane-count-error" class="error" role="alert"></p>
         <p class="error" id="guide-error" {% if not last_error or session_expired %}hidden{% endif %}>{% if last_error and not session_expired %}{{ last_error }}{% endif %}</p>
       </article>
       <article class="card">
@@ -132,7 +141,7 @@
         <input id="xmltv-live-on-air" type="checkbox" role="switch" aria-describedby="live-on-air-help" {% if xmltv_live_on_air %}checked{% endif %}>
         <span>Mark on-air programmes Live</span>
       </label>
-      <p class="muted" id="live-on-air-help">Include currently airing programmes when Live status is unknown. Confirmed replays stay excluded; unidentified replays may be labeled Live. New is unchanged. Refresh your Channels DVR guide after changing this setting.</p>
+      <p class="muted" id="live-on-air-help">Label currently airing programmes with unknown Live status as Live on the dashboard and in XMLTV. Unidentified replays may be labeled Live. Refresh your Channels DVR guide after changing this setting.</p>
       {% if sports %}
       <div class="row filter-actions">
         <button id="select-sports" class="secondary" type="button">Select all</button>
@@ -182,7 +191,7 @@
               data-search="{{ event.search }}"
               {% if event.sport in hidden_sports or event.channel in hidden_channels or (hide_spanish and event.language == "es") %}hidden{% endif %}
             >
-              <td><div class="event-time"><span>{{ event.clock }}</span>{% if event.confirmed_live %}<span class="live">LIVE</span>{% elif event.on_now %}<span class="live">On now</span>{% endif %}</div></td>
+              <td><div class="event-time"><span>{{ event.clock }}</span>{% if event.show_live %}<span class="live">LIVE</span>{% elif event.on_now %}<span class="live">On now</span>{% endif %}</div></td>
               <td>{{ event.sport or "—" }}</td>
               <td><div class="event-title">{% if event.artwork_secondary %}<span class="event-art pair{% if event.artwork_fallback %} fallback{% endif %}"><img src="{{ event.artwork }}" alt="" width="41" height="46" loading="lazy"><img src="{{ event.artwork_secondary }}" alt="" width="41" height="46" loading="lazy"></span>{% else %}<img class="event-art{% if event.artwork_fallback %} fallback{% endif %}" src="{{ event.artwork }}" alt="" width="96" height="54" loading="lazy">{% endif %}<span class="event-name">{{ event.title }}</span></div></td>
               <td>{{ event.station or event.channel or "—" }}</td>

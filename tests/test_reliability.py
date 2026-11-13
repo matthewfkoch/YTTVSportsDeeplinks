@@ -88,7 +88,7 @@ def test_game_card_evidence_and_cross_station_language_isolation():
     events=parse_browse(payload,now=NOW)
     item=next(e for e in events if e.station=='ESPN+')
     assert item.language == ''
-    assert item.broadcast_live is True and item.first_run is True
+    assert item.broadcast_live is None and item.first_run is True
 
 
 def test_candidate_selection_skips_expired_and_prioritizes_current_then_next():
@@ -114,6 +114,31 @@ async def test_full_lookup_uses_selector_and_keeps_playback_parameters():
         rows=await client.resolve_soon(SavedSession(kind='cookies'),CLIENTS[0],[expired]*80+[pending])
         assert client._browse.await_count == 1
         assert rows[-1].deeplink == 'https://tv.youtube.com/watch/abcdefghijk?vp=0gEEEgIwAQ%3D%3D'
+
+
+async def test_date_only_lookup_recovers_the_matching_airing_after_placeholder_expires():
+    pending = game(video_id="", entity_id="UCabcdefghijklmnopqrstuv", deeplink="",
+                   start=NOW - timedelta(hours=7), end=NOW - timedelta(hours=4),
+                   start_source="date", end_estimated=True)
+    assert unresolved_soon([pending], now=NOW) == [pending]
+    end = NOW + timedelta(hours=3)
+    airing = {
+        "title": {"simpleText": pending.title},
+        "stationName": pending.station,
+        "startTime": int(NOW.timestamp()),
+        "endTime": int(end.timestamp()),
+        "navigationEndpoint": {"watchEndpoint": {"videoId": "abcdefghijk"}},
+    }
+    async with httpx.AsyncClient() as http:
+        client = InnerTubeClient(http)
+        client._browse = AsyncMock(return_value={"epgAiringRenderer": airing})
+        resolved = await client.resolve_watch(SavedSession(kind="cookies"), CLIENTS[0], pending)
+        assert resolved.start == NOW and resolved.end == end
+        assert resolved.has_scheduled_start and not resolved.end_estimated
+
+        client._browse.return_value = {"epgAiringRenderer": {**airing, "stationName": "ESPN2"}}
+        mismatched = await client.resolve_watch(SavedSession(kind="cookies"), CLIENTS[0], pending)
+        assert mismatched == pending
 
 
 @pytest.mark.parametrize('failure', ['truncated','wrong_key','bad_json','bad_structure'])

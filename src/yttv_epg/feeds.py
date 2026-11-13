@@ -6,6 +6,7 @@ from html import escape
 from xml.sax.saxutils import escape as xml_escape
 
 from yttv_epg.branding import LOGO_PATH, PRODUCT_NAME, SOURCE_NAME
+from yttv_epg.broadcasts import label_live
 from yttv_epg.lanes import LaneAssignment, whatson
 from yttv_epg.station_logos import station_key, bundled_logo
 from yttv_epg.sports import channel_identity, event_channel
@@ -51,7 +52,7 @@ def lane_logos(
         key = station_key(airing.station)
         if key and airing.station_logo and channel_identity(airing.station) == event_channel(airing):
             known.setdefault(key, airing.station_logo)
-        if airing.watch_id() and airing.end > airing.start:
+        if airing.watch_id() and airing.has_scheduled_start and airing.end > airing.start:
             by_lane.setdefault(row.lane, []).append(row)
     result: dict[int, str] = {}
     for lane in range(1, lane_count + 1):
@@ -104,6 +105,7 @@ def xmltv(
         for row in assignments
         if 1 <= row.lane <= lane_count
         and row.airing.watch_id()
+        and row.airing.has_scheduled_start
         and row.airing.end > row.airing.start
     ]
     programmes.sort(key=lambda row: (row.lane, row.airing.start, row.airing.title))
@@ -127,10 +129,7 @@ def xmltv(
         if row.airing.is_repeat is True:
             lines.append("    <previously-shown/>")
         elif row.airing.end > now:
-            if row.airing.broadcast_live is True or (
-                live_on_air and row.airing.broadcast_live is None
-                and row.airing.start <= now < row.airing.end
-            ):
+            if label_live(row.airing, now, live_on_air=live_on_air):
                 lines.append("    <live/>")
             if "premiere" in row.airing.gracenote_flags:
                 lines.append("    <premiere/>")

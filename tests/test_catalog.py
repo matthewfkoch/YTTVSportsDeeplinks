@@ -294,6 +294,31 @@ def test_broadcast_status_roundtrip_and_migration_defaults_unknown(tmp_path):
     migrated._conn.close()
 
 
+def test_timing_migration_clears_cached_live_badges_and_preserves_explicit_repeats(tmp_path):
+    from dataclasses import replace
+    import sqlite3
+
+    path = tmp_path / "timing.sqlite"
+    catalog = Catalog(path)
+    start = datetime(2026, 10, 20, tzinfo=timezone.utc)
+    live = replace(_airing("Alabama at Georgia", start), broadcast_live=True, first_run=True)
+    repeat = replace(live, start=start + timedelta(days=1), end=live.end + timedelta(days=1),
+                     broadcast_live=False, is_repeat=True, first_run=False)
+    catalog.replace([live, repeat], pack_lanes([live, repeat], 1))
+    catalog._conn.close()
+    with sqlite3.connect(path) as conn:
+        conn.execute("ALTER TABLE events DROP COLUMN start_source")
+        conn.execute("ALTER TABLE events DROP COLUMN end_estimated")
+
+    migrated = Catalog(path)
+    live, repeat = [row.airing for row in migrated.assignments()]
+    assert live.broadcast_live is None and live.first_run is True
+    assert live.start_source == "legacy" and live.end_estimated
+    assert not live.has_scheduled_start and not repeat.has_scheduled_start
+    assert repeat.broadcast_live is False and repeat.is_repeat is True
+    migrated._conn.close()
+
+
 def test_channel_filter_migration_preserves_exclusions_once(tmp_path):
     from dataclasses import replace
     path = tmp_path / "migration.sqlite"

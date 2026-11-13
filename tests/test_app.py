@@ -397,6 +397,65 @@ def test_feeds_follow_request_host_when_public_base_is_localhost():
         assert export[0]["url"].startswith("http://192.168.1.20:8095/whatson/1")
 
 
+def test_dashboard_lane_count_repacks_feeds_and_survives_restart(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from xml.etree import ElementTree as ET
+
+    from yttv_epg import app as module
+    from yttv_epg.catalog import Catalog
+    from yttv_epg.parse import Airing
+
+    path = tmp_path / "catalog.sqlite"
+    catalog = Catalog(path)
+    monkeypatch.setattr(module.state, "catalog", catalog)
+    monkeypatch.setattr(module.state, "lane_assignments", None)
+    monkeypatch.setattr(module.state, "espn_listings", [])
+    monkeypatch.setattr(module.settings, "lane_count", 1)
+    now = datetime.now(timezone.utc)
+    games = [
+        Airing(watch, title, "ESPN", "event", now - timedelta(minutes=1),
+               now + timedelta(hours=2), f"https://tv.youtube.com/watch/{watch}", sport="Football")
+        for watch, title in [("abcdefghijk", "Alabama at Georgia"), ("lmnopqrstuv", "Michigan at Ohio State")]
+    ]
+    catalog.replace(games, [])
+
+    with TestClient(app) as client:
+        assert 'value="1" required' in client.get("/").text
+        assert client.get("/api/status").json()["dropped"] == 1
+        original = client.get("/api/export").json()
+        first_game = client.get("/whatson/1").json()
+
+        for invalid in (0, -1, 751, True, "2", 2.5, None):
+            response = client.post("/api/filters", json={"lane_count": invalid, "hide_spanish": True})
+            assert response.status_code == 400
+        assert not catalog.hide_spanish()
+        assert client.get("/api/export").json() == original
+
+        saved = client.post("/api/filters", json={"lane_count": 2}).json()
+        assert (saved["lane_count"], saved["lanes_used"], saved["dropped"]) == (2, 2, 0)
+        assert client.get("/whatson/1").json() == first_game
+        assert client.get("/whatson/2").json()["ok"]
+        export = client.get("/api/export").json()
+        assert export[:1] == original and export[1]["number"] == original[0]["number"] + 1
+        assert 'tvg-id="yttv-sports-2"' in client.get("/playlist.m3u").text
+        guide = ET.fromstring(client.get("/xmltv.xml").text)
+        assert [item.get("channel") for item in guide.findall("programme")] == ["yttv-sports-1", "yttv-sports-2"]
+
+    monkeypatch.setattr(module.state, "catalog", Catalog(path))
+    monkeypatch.setattr(module.state, "lane_assignments", None)
+    monkeypatch.setattr(module.settings, "lane_count", 3)
+    with TestClient(app) as client:
+        assert client.get("/api/status").json()["lane_count"] == 2
+        assert client.get("/api/export").json() == export
+        saved = client.post("/api/filters", json={"lane_count": 1}).json()
+        assert (saved["lane_count"], saved["lanes_used"], saved["dropped"]) == (1, 1, 1)
+        assert client.get("/api/export").json() == original
+        assert "yttv-sports-2" not in client.get("/playlist.m3u").text
+        assert "yttv-sports-2" not in client.get("/xmltv.xml").text
+        assert client.get("/whatson/1").json() == first_game
+        assert client.get("/whatson/2").status_code == 404
+
+
 @pytest.mark.asyncio
 async def test_light_refresh_resolves_watch_ids_and_skips_noop():
     from datetime import datetime, timedelta, timezone
@@ -473,6 +532,115 @@ async def test_light_refresh_resolves_watch_ids_and_skips_noop():
         state.catalog.replace([], [])
         _set_lane_cache([])
         state.session = None
+
+
+@pytest.mark.asyncio
+async def test_light_refresh_adds_timed_lane_for_existing_watch_link(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    import httpx
+
+    from yttv_epg import app as module
+    from yttv_epg.catalog import Catalog
+    from yttv_epg.innertube import InnerTubeClient
+    from yttv_epg.parse import GAME_CARD_ZONE, Airing
+    from yttv_epg.session_store import SavedSession
+
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    placeholder = now.astimezone(GAME_CARD_ZONE).replace(hour=12, minute=0, second=0)
+    pending = Airing(
+        "abcdefghijk", "Alabama at Georgia", "ESPN+", "event",
+        placeholder, placeholder + timedelta(hours=3),
+        "https://tv.youtube.com/watch/abcdefghijk?vp=original",
+        entity_id="UCabcdefghijklmnopqrstuv", start_source="date", end_estimated=True,
+    )
+    catalog = Catalog(tmp_path / "catalog.sqlite")
+    catalog.replace([pending], [])
+    monkeypatch.setattr(module.state, "catalog", catalog)
+    monkeypatch.setattr(module.state, "lane_assignments", None)
+    monkeypatch.setattr(module.state, "session", SavedSession(kind="cookies"))
+    monkeypatch.setattr(module.state, "espn_listings", [])
+    monkeypatch.setattr(module.settings, "enable_chrome", False)
+    detail = {
+        "title": {"simpleText": pending.title}, "stationName": pending.station,
+        "startTime": int(now.timestamp()), "endTime": int((now + timedelta(hours=2)).timestamp()),
+        "navigationEndpoint": {"watchEndpoint": {"videoId": pending.watch_id()}},
+    }
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as http:
+        inner = InnerTubeClient(http)
+        browse = AsyncMock(return_value={"epgAiringRenderer": {
+            **detail, "navigationEndpoint": {"watchEndpoint": {"videoId": "replay00001"}},
+        }})
+        monkeypatch.setattr(inner, "_browse", browse)
+        monkeypatch.setattr(module.state, "innertube", inner)
+
+        assert (await http.get("/whatson/1")).json()["deeplink_url"] is None
+        assert not (await module.refresh_watch_ids())["changed"]
+        assert catalog.events()[0].start_source == "date"
+
+        browse.return_value = {"epgAiringRenderer": detail}
+        assert (await module.refresh_watch_ids())["changed"]
+        [resolved] = catalog.events()
+        assert resolved.start == now and resolved.has_scheduled_start
+        assert resolved.end == now + timedelta(hours=2) and not resolved.end_estimated
+        assert (await http.get("/whatson/1")).json()["deeplink_url"] == pending.deeplink
+        assert pending.title in (await http.get("/xmltv.xml")).text
+        assert not (await module.refresh_watch_ids())["changed"]
+        assert browse.await_count == 2
+
+
+def test_upgrade_withholds_legacy_programmes_until_full_refresh(tmp_path, monkeypatch):
+    import sqlite3
+    from dataclasses import replace
+    from datetime import datetime, timedelta, timezone
+    from xml.etree import ElementTree as ET
+
+    from yttv_epg import app as module
+    from yttv_epg.catalog import Catalog
+    from yttv_epg.innertube import MineError, MineResult
+    from yttv_epg.lanes import LaneAssignment
+    from yttv_epg.parse import Airing
+    from yttv_epg.session_store import SavedSession
+
+    start = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(minutes=5)
+    cached = Airing(
+        "abcdefghijk", "Alabama at Georgia", "ESPN", "event", start,
+        start + timedelta(hours=3), "https://tv.youtube.com/watch/abcdefghijk",
+    )
+    path = tmp_path / "catalog.sqlite"
+    old = Catalog(path)
+    old.replace([cached], [LaneAssignment(2, cached)])
+    old._conn.close()
+    with sqlite3.connect(path) as conn:
+        conn.execute("ALTER TABLE events DROP COLUMN start_source")
+        conn.execute("ALTER TABLE events DROP COLUMN end_estimated")
+
+    catalog = Catalog(path)
+    monkeypatch.setattr(module.state, "catalog", catalog)
+    monkeypatch.setattr(module.state, "lane_assignments", None)
+    monkeypatch.setattr(module.state, "session", SavedSession(kind="cookies"))
+    monkeypatch.setattr(module.state, "last_full_mine_at", None)
+    monkeypatch.setattr(module.state, "espn_listings", [])
+    monkeypatch.setattr(module.settings, "enable_chrome", False)
+    monkeypatch.setattr(module.settings, "lane_count", 2)
+    verified = replace(cached, start=start + timedelta(minutes=1))
+    mine = AsyncMock(side_effect=[MineError("Guide temporarily unavailable"),
+                                  MineResult([verified], "WEB_UNPLUGGED", "FEunplugged_epg", {})])
+    monkeypatch.setattr(module, "_mine_with_chrome_recovery", mine)
+
+    with TestClient(app) as client:
+        assert "Time TBD" in client.get("/").text
+        assert ET.fromstring(client.get("/xmltv.xml").text).find("programme") is None
+        assert client.get("/whatson/2").json()["deeplink_url"] is None
+
+        assert client.post("/api/refresh").status_code == 502
+        assert ET.fromstring(client.get("/xmltv.xml").text).find("programme") is None
+
+        assert client.post("/api/refresh").status_code == 200
+        [programme] = ET.fromstring(client.get("/xmltv.xml").text).findall("programme")
+        assert programme.get("channel") == "yttv-sports-2"
+        assert programme.get("start") == verified.start.strftime("%Y%m%d%H%M%S +0000")
+        assert client.get("/whatson/2").json()["deeplink_url"] == cached.deeplink
 
 
 @pytest.mark.asyncio
@@ -911,6 +1079,121 @@ def test_independent_channel_filters_update_dashboard_and_feeds(tmp_path, monkey
         assert "Michigan vs Ohio State" in guide
         client.post("/api/filters", json={"toggle_channel": "ViX"})
         assert "Chivas vs America" in client.get("/xmltv.xml").text
+
+
+@pytest.mark.parametrize(("field", "first", "second"), [
+    ("hidden", "Football", "Basketball"),
+    ("hidden_channels", "ESPN2", "FS1"),
+])
+def test_filter_revision_changes_when_event_counts_stay_the_same(tmp_path, monkeypatch, field, first, second):
+    from datetime import datetime, timedelta, timezone
+    from yttv_epg import app as module
+    from yttv_epg.catalog import Catalog
+    from yttv_epg.parse import Airing
+
+    now = datetime.now(timezone.utc)
+    events = [
+        Airing("football001", "Michigan at Ohio State", "ESPN2", "event", now,
+               now + timedelta(hours=2), "https://tv.youtube.com/watch/football001", sport="Football"),
+        Airing("basketball1", "Detroit Pistons at Boston Celtics", "FS1", "event", now,
+               now + timedelta(hours=2), "https://tv.youtube.com/watch/basketball1", sport="Basketball"),
+    ]
+    catalog = Catalog(tmp_path / "filters.sqlite")
+    catalog.replace(events, [])
+    monkeypatch.setattr(module.state, "catalog", catalog)
+    monkeypatch.setattr(module.state, "lane_assignments", None)
+    with TestClient(app) as client:
+        first_save = client.post("/api/filters", json={field: [first]}).json()
+        before = client.get("/api/status").json()
+        assert before["filter_revision"] == first_save["filter_revision"]
+        assert f'data-filter-revision="{before["filter_revision"]}"' in client.get("/").text
+
+        second_save = client.post("/api/filters", json={field: [second]}).json()
+        after = client.get("/api/status").json()
+        assert before["events"] == after["events"] == 1
+        assert before["all_events"] == after["all_events"] == 2
+        assert before["last_refresh"] == after["last_refresh"]
+        assert after["filter_revision"] == second_save["filter_revision"] != before["filter_revision"]
+
+
+def test_dashboard_and_xmltv_share_gracenote_and_live_preference(tmp_path, monkeypatch):
+    import json
+    from datetime import datetime, timedelta, timezone
+    from yttv_epg import app as module
+    from yttv_epg.catalog import Catalog
+    from yttv_epg.parse import Airing
+
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    game = Airing("abcdefghijk", "Boston at Detroit", "ESPN", "event",
+                  now - timedelta(minutes=5), now + timedelta(hours=2),
+                  "https://tv.youtube.com/watch/abcdefghijk", sport="Basketball")
+    catalog = Catalog(tmp_path / "catalog.sqlite")
+    catalog.replace([game], [])
+    path = tmp_path / "grid.json"
+    path.write_text(json.dumps({"channels": [{"callSign": game.station, "events": [{
+        "startTime": game.start.isoformat(), "endTime": game.end.isoformat(),
+        "program": {"title": game.title}, "flag": ["Live"],
+    }]}]}))
+    monkeypatch.setattr(module.state, "catalog", catalog)
+    monkeypatch.setattr(module.state, "lane_assignments", None)
+    monkeypatch.setattr(module.settings, "gracenote_grid_file", path)
+    with TestClient(app) as client:
+        client.post("/api/filters", json={"xmltv_live_on_air": False}).raise_for_status()
+        assert '>LIVE</span>' in client.get("/").text
+        assert "<live/>" in client.get("/xmltv.xml").text
+
+        path.unlink()
+        dashboard = client.get("/").text
+        assert '>LIVE</span>' not in dashboard
+        assert '>On now</span>' in dashboard
+        assert "<live/>" not in client.get("/xmltv.xml").text
+
+        client.post("/api/filters", json={"xmltv_live_on_air": True}).raise_for_status()
+        assert '>LIVE</span>' in client.get("/").text
+        assert "<live/>" in client.get("/xmltv.xml").text
+
+
+def test_date_only_game_shows_tbd_without_claiming_a_lane(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from yttv_epg import app as module
+    from yttv_epg.catalog import Catalog
+    from yttv_epg.parse import merge_airings, parse_browse
+
+    now = datetime.now(timezone.utc)
+    card = {
+        "primaryText": {"simpleText": "Today • ESPN+"},
+        "secondaryText": {"simpleText": "NCAA Football"},
+        "startTeamPrimaryText": {"simpleText": "Alabama"},
+        "endTeamPrimaryText": {"simpleText": "Georgia"},
+        "navigationEndpoint": {"watchEndpoint": {"videoId": "abcdefghijk"}},
+    }
+    pending = parse_browse({"unpluggedGameCardRenderer": card}, now=now)[0]
+    assert pending.start_source == "date" and pending.end_estimated
+    catalog = Catalog(tmp_path / "catalog.sqlite")
+    catalog.replace([pending], [])
+    monkeypatch.setattr(module.state, "catalog", catalog)
+    monkeypatch.setattr(module.state, "lane_assignments", None)
+    monkeypatch.setattr(module.state, "espn_listings", [])
+    with TestClient(app) as client:
+        client.post("/api/filters", json={"xmltv_live_on_air": True}).raise_for_status()
+        dashboard = client.get("/").text
+        assert "Alabama at Georgia" in dashboard
+        assert "Time TBD" in dashboard
+        assert "<programme " not in client.get("/xmltv.xml").text
+        assert not client.get("/whatson/1").json()["ok"]
+        assert client.get("/events").json()["events"][0]["start_source"] == "date"
+
+        card["startTimeSeconds"] = int(now.timestamp())
+        card["endTimeSeconds"] = int((now + timedelta(hours=2)).timestamp())
+        scheduled = parse_browse({"unpluggedGameCardRenderer": card}, now=now)[0]
+        assert scheduled.start_source == "guide" and not scheduled.end_estimated
+        # The guide slot wins over a date-only listing of the same stream.
+        assert merge_airings([pending, scheduled]) == [scheduled]
+        catalog.replace_resolved([(pending, scheduled)])
+        client.post("/api/filters", json={"hide_spanish": False}).raise_for_status()
+        assert "Time TBD" not in client.get("/").text
+        assert "Alabama at Georgia" in client.get("/xmltv.xml").text
+        assert client.get("/whatson/1").json()["deeplink_url"] == scheduled.deeplink
 
 
 def test_live_on_air_preference_routes_and_validation(monkeypatch):

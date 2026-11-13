@@ -277,14 +277,26 @@ def test_resolve_sport_keeps_stored_volleyball_over_school_name_football():
 
 
 def test_espn_fills_placeholder_kickoff_from_team_names():
+    from dataclasses import replace
+
     noon = datetime(2026, 9, 12, 16, 0, tzinfo=timezone.utc)
     kickoff = datetime(2026, 9, 12, 19, 30, tzinfo=timezone.utc)
-    rows = apply_espn_sports(
-        [_airing("Penn State Nittany Lions at Temple Owls", "ESPN2", noon, "Football")],
-        [EspnListing("Penn State vs Temple", "Football", kickoff)],
-    )
-    assert rows[0].start == kickoff
-    assert rows[0].sport == "Football"
+    scheduled = _airing("Penn State Nittany Lions at Temple Owls", "ESPN2", noon, "Football")
+    pending = replace(scheduled, start_source="date", end_estimated=True)
+    listing = EspnListing("Penn State vs Temple", "Football", kickoff, network="ESPN2",
+                          end=kickoff + timedelta(hours=4))
+
+    corrected, unchanged = apply_espn_sports([pending, scheduled], [listing])
+    assert corrected.start == kickoff and corrected.start_source == "espn"
+    assert corrected.end == listing.end and not corrected.end_estimated
+    assert corrected.sport == "Football"
+    assert unchanged.start == noon and unchanged.end == scheduled.end
+    assert apply_espn_sports([pending], [replace(listing, network="ESPN+")])[0] == pending
+    assert apply_espn_sports([pending], [listing, replace(listing, start=noon)])[0] == pending
+    assert apply_espn_sports([replace(pending, is_repeat=True)], [listing])[0].start == noon
+
+    without_end = apply_espn_sports([pending], [replace(listing, end=None)])[0]
+    assert without_end.end_estimated and without_end.end - kickoff == pending.end - noon
 
 
 def test_reported_uconn_broadcaster_corrected_from_official_schedule():

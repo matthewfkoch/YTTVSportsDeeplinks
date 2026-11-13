@@ -4,6 +4,8 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 from yttv_epg.parse import parse_browse
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_browse.json"
@@ -700,7 +702,11 @@ def test_same_matchup_on_different_days_is_kept():
     assert {item.video_id for item in merged} == {"saturdaygm1", "sundaygame1"}
 
 
-def test_unplugged_game_card_becomes_saturday_football_event():
+@pytest.mark.parametrize(("when", "now", "expected"), [
+    ("Sep 12", datetime(2026, 9, 9, 23, tzinfo=timezone.utc), datetime(2026, 9, 12, 16, tzinfo=timezone.utc)),
+    ("Feb 29", datetime(2024, 2, 28, 16, tzinfo=timezone.utc), datetime(2024, 2, 29, 17, tzinfo=timezone.utc)),
+])
+def test_unplugged_game_card_becomes_football_event(when, now, expected):
     payload = {
         "unpluggedGameCardRenderer": {
             "header": {
@@ -719,11 +725,10 @@ def test_unplugged_game_card_becomes_saturday_football_event():
                     },
                 }
             },
-            "primaryText": {"runs": [{"text": "Sep 12 • ESPN2"}]},
+            "primaryText": {"runs": [{"text": f"{when} • ESPN2"}]},
             "secondaryText": {"runs": [{"text": "NCAA Football"}]},
         }
     }
-    now = datetime(2026, 9, 9, 23, 0, tzinfo=timezone.utc)
     airings = parse_browse(payload, now=now, fallback_minutes=180)
     assert len(airings) == 1
     event = airings[0]
@@ -732,7 +737,7 @@ def test_unplugged_game_card_becomes_saturday_football_event():
     assert event.station == "ESPN2"
     assert event.sport == "Football"
     assert event.watch_id() == ""
-    assert event.start.astimezone(timezone.utc).day == 12
+    assert event.start == expected
 
 
 def test_game_card_tomorrow_network_becomes_event():
@@ -759,6 +764,19 @@ def test_game_card_tomorrow_network_becomes_event():
     assert event.title == "Florida A&M Rattlers at Miami Hurricanes"
     assert event.station == "ACC Network"
     assert event.start.astimezone(timezone.utc).date().isoformat() == "2026-09-11"
+
+
+@pytest.mark.parametrize(("now", "when", "expected"), [
+    (datetime(2024, 2, 28, 16, tzinfo=timezone.utc), "Thu, Feb 29", datetime(2024, 2, 29, 17, tzinfo=timezone.utc)),
+    (datetime(2023, 12, 31, 16, tzinfo=timezone.utc), "February 29", datetime(2024, 2, 29, 17, tzinfo=timezone.utc)),
+    (datetime(2025, 2, 28, 16, tzinfo=timezone.utc), "Feb 29", None),
+    (datetime(2024, 3, 20, 16, tzinfo=timezone.utc), "Feb 29", None),
+    (datetime(2024, 2, 28, 16, tzinfo=timezone.utc), "Feb 30", None),
+])
+def test_game_card_date_infers_year_before_validating_leap_day(now, when, expected):
+    from yttv_epg.parse import _parse_game_card_start
+
+    assert _parse_game_card_start(f"{when} • ESPN2", now) == expected
 
 
 def test_widescreen_thumbnail_becomes_artwork():

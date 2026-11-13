@@ -57,6 +57,23 @@ def test_conflicting_duplicates_and_explicit_negative_evidence():
     assert apply_gracenote([negative], parse_grid(grid(['Live'])))[0].broadcast_live is False
 
 
+@pytest.mark.parametrize("flag,repeat", [("Replay", True), ("Tape Delayed", False)])
+def test_matching_negative_grid_evidence_overrides_live(flag, repeat):
+    game = replace(airing(), broadcast_live=True, first_run=True)
+    listings = parse_grid(grid(["Live", "New", flag]))
+    result = apply_gracenote([game], listings)[0]
+    assert result.broadcast_live is False
+    assert (result.is_repeat is True) is repeat
+    assert result.first_run is (not repeat)
+    body = xmltv([LaneAssignment(1, result)], 1, now=game.start, live_on_air=True)
+    assert "<live/>" not in body
+    assert ("<previously-shown/>" in body) is repeat
+    assert ("<new/>" in body) is (not repeat)
+
+    estimated = replace(game, end_estimated=True)
+    assert apply_gracenote([estimated], listings) == [estimated]
+
+
 def test_file_replacement_removal_and_invalid_input(tmp_path):
     path = tmp_path / 'grid.json'
     path.write_text(json.dumps(grid(['Live'])))

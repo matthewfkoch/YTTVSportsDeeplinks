@@ -1,14 +1,21 @@
 """Content broadcast status, separate from whether a TV stream is on air."""
 from dataclasses import replace
-from typing import Any
+from datetime import datetime
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from yttv_epg.parse import Airing
 
 
-def programme_badges(node: dict[str, Any], *, sports_card: bool = False) -> dict[str, bool | None]:
-    """Only direct programme badges are evidence; isLive/live may describe the stream.
+def label_live(airing: "Airing", now: datetime, *, live_on_air: bool = False) -> bool:
+    return airing.has_scheduled_start and airing.is_repeat is not True and now < airing.end and (
+        airing.broadcast_live is True
+        or (live_on_air and airing.broadcast_live is None and airing.start <= now)
+    )
 
-    LIVE is content evidence only on an event-specific sports game card. Missing
-    badges and LIVE badges on a linear EPG airing remain unknown.
-    """
+
+def programme_badges(node: dict[str, Any]) -> dict[str, bool | None]:
+    """Read explicit repeat and first-run badges. LIVE can describe a replay stream."""
     tokens: set[str] = set()
     values = [node.get("badge")]
     badges = node.get("badges")
@@ -22,7 +29,7 @@ def programme_badges(node: dict[str, Any], *, sports_card: bool = False) -> dict
             tokens.add(badge["type"].upper())
     repeat = bool(tokens & {"REPLAY", "REPEAT", "RERUN"})
     return {
-        "broadcast_live": False if repeat else (True if sports_card and "LIVE" in tokens else None),
+        "broadcast_live": False if repeat else None,
         "first_run": False if repeat else (True if "NEW" in tokens else None),
         "is_repeat": True if repeat else None,
     }

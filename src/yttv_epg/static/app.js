@@ -16,6 +16,7 @@ const toastEl = document.getElementById("refresh-toast");
 const toastText = document.getElementById("refresh-toast-text");
 const sessionStatus = document.getElementById("session-status");
 const searchEl = document.getElementById("event-search");
+const laneCountInput = document.getElementById("lane-count");
 
 const boot = {
   signedIn: document.body.dataset.signedIn === "true",
@@ -23,6 +24,8 @@ const boot = {
   lastRefresh: document.body.dataset.lastRefresh || "",
   events: document.body.dataset.events || "",
   allEvents: document.body.dataset.allEvents || "",
+  filterRevision: document.body.dataset.filterRevision || "",
+  laneCount: Number(laneCountInput?.defaultValue),
   lastError: null,
   primed: false,
   loginDesktopDismissed: false,
@@ -41,7 +44,6 @@ function confirmLanguage(value) {
   confirmedHideSpanish = value;
   boot.hideSpanish = value;
   if (languageToggle) languageToggle.checked = value;
-  applyEventVisibility();
 }
 const liveOnAirToggle = document.getElementById("xmltv-live-on-air");
 let confirmedLiveOnAir = Boolean(liveOnAirToggle?.defaultChecked);
@@ -51,7 +53,6 @@ boot.liveOnAir = confirmedLiveOnAir;
 function confirmLiveOnAir(value) {
   if (typeof value !== "boolean") return;
   confirmedLiveOnAir = value;
-  boot.liveOnAir = value;
   if (liveOnAirToggle) liveOnAirToggle.checked = value;
 }
 let guideBusy = false;
@@ -299,7 +300,7 @@ function restoreChipState(snapshot) {
   snapshot.forEach(({ el, on }) => chipOn(el, on));
 }
 
-function applyOptimisticFilter(body) {
+function applyFilterState(body) {
   if (liveOnAirToggle && typeof body.xmltv_live_on_air === "boolean") liveOnAirToggle.checked = body.xmltv_live_on_air;
   const languageToggle = document.getElementById("hide-spanish");
   if (languageToggle && typeof body.hide_spanish === "boolean") languageToggle.checked = body.hide_spanish;
@@ -361,14 +362,14 @@ function applyEventVisibility() {
   }
 }
 
-async function postFilter(body, message) {
+async function postFilter(body, message, saveError = errorEl) {
   if (filterSavePending) return;
   filterSavePending = true;
   filterGeneration += 1;
   const previous = snapshotChipState();
-  applyOptimisticFilter(body);
+  applyFilterState(body);
   applyEventVisibility();
-  errorEl.textContent = "";
+  saveError.textContent = "";
   actionInFlight = true;
   showToast(message);
   try {
@@ -382,30 +383,73 @@ async function postFilter(body, message) {
       if (languageToggle) languageToggle.checked = confirmedHideSpanish;
       if (liveOnAirToggle) liveOnAirToggle.checked = confirmedLiveOnAir;
       applyEventVisibility();
-      errorEl.textContent = await readError(response);
+      saveError.textContent = await readError(response);
       hideToast();
       return;
     }
     const data = await response.json();
+    applyFilterState(data);
     confirmLanguage(data.hide_spanish);
     confirmLiveOnAir(data.xmltv_live_on_air);
+    applyEventVisibility();
+    boot.filterRevision = data.filter_revision ?? boot.filterRevision;
     const countEl = document.getElementById("event-count");
     if (countEl && data.events != null) countEl.textContent = data.events;
     boot.events = String(data.events ?? boot.events);
     boot.allEvents = String(data.all_events ?? boot.allEvents);
+    if (Number.isInteger(data.lane_count)) {
+      const lanesUsed = document.getElementById("lanes-used");
+      const droppedEvents = document.getElementById("dropped-events");
+      const droppedCount = document.getElementById("dropped-count");
+      if (lanesUsed) lanesUsed.textContent = `${data.lanes_used} / ${data.lane_count}`;
+      if (droppedEvents) droppedEvents.hidden = data.dropped === 0;
+      if (droppedCount) droppedCount.textContent = data.dropped;
+      if (laneCountInput && ("lane_count" in body || laneCountInput.valueAsNumber === boot.laneCount)) {
+        laneCountInput.value = String(data.lane_count);
+      }
+      boot.laneCount = data.lane_count;
+    }
     hideToast();
+    return data;
   } catch (exc) {
     restoreChipState(previous);
     if (languageToggle) languageToggle.checked = confirmedHideSpanish;
     if (liveOnAirToggle) liveOnAirToggle.checked = confirmedLiveOnAir;
     applyEventVisibility();
-    errorEl.textContent = exc.message || "Request failed";
+    saveError.textContent = exc.message || "Request failed";
     hideToast();
   } finally {
     filterSavePending = false;
     actionInFlight = false;
   }
 }
+
+document.getElementById("lane-count-form")?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (actionInFlight || reloading) return;
+  const saveButton = document.getElementById("save-lane-count");
+  const status = document.getElementById("lane-count-status");
+  status.hidden = true;
+  const previousCount = boot.laneCount;
+  saveButton.disabled = true;
+  laneCountInput.disabled = true;
+  try {
+    const saved = await postFilter(
+      { lane_count: laneCountInput.valueAsNumber },
+      "Saving lane count…",
+      document.getElementById("lane-count-error"),
+    );
+    if (saved) {
+      status.textContent = saved.lane_count === previousCount
+        ? "Lane count saved."
+        : `Lane count saved. ${saved.lane_count > previousCount ? "Import only the new lanes into APITuner." : "Remove the extra lanes from APITuner."} Then refresh the Channels DVR source and guide.`;
+      status.hidden = false;
+    }
+  } finally {
+    saveButton.disabled = false;
+    laneCountInput.disabled = false;
+  }
+});
 
 document.getElementById("sport-chips")?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-sport]");
@@ -445,7 +489,6 @@ searchEl?.addEventListener("input", () => {
 });
 
 function statusChanged(status) {
-  if (typeof status.xmltv_live_on_air === "boolean" && status.xmltv_live_on_air !== boot.liveOnAir) return true;
   const lastRefresh = status.last_refresh || "";
   const lastError = status.last_error || "";
   if (typeof status.hide_spanish === "boolean" && status.hide_spanish !== boot.hideSpanish) return true;
@@ -459,9 +502,16 @@ function statusChanged(status) {
   return false;
 }
 
+function guideFiltersChanged(status) {
+  return (typeof status.filter_revision === "string" && status.filter_revision !== boot.filterRevision)
+    || (typeof status.xmltv_live_on_air === "boolean" && status.xmltv_live_on_air !== boot.liveOnAir)
+    || (Number.isInteger(status.lane_count) && status.lane_count !== boot.laneCount);
+}
+
 function snapshotStatus(status) {
   confirmLanguage(status.hide_spanish);
   confirmLiveOnAir(status.xmltv_live_on_air);
+  applyEventVisibility();
   boot.lastError = status.last_error || "";
   boot.lastRefresh = status.last_refresh || boot.lastRefresh;
   boot.events = String(status.events ?? boot.events);
@@ -484,12 +534,15 @@ async function pollStatus() {
   }
   if (actionInFlight || filterSavePending || reloading || generation !== filterGeneration) return;
   setBackgroundUpdating(Boolean(status.refreshing));
-  if (!boot.primed) {
+  if (laneCountInput && document.activeElement === laneCountInput
+      && laneCountInput.valueAsNumber !== boot.laneCount) return;
+  const filtersChanged = guideFiltersChanged(status);
+  if (!boot.primed && !filtersChanged) {
     snapshotStatus(status);
     return;
   }
   if (status.refreshing) return;
-  if (statusChanged(status) && !(cookieDraftOpen() && !status.signed_in)) {
+  if ((filtersChanged || statusChanged(status)) && !(cookieDraftOpen() && !status.signed_in)) {
     if (filterSavePending || generation !== filterGeneration) return;
     reloading = true;
     showToast("Guide updated. Reloading…");

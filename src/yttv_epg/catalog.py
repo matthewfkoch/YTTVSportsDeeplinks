@@ -96,6 +96,16 @@ class Catalog:
         for column in ("broadcast_live", "first_run", "is_repeat"):
             if column not in cols:
                 self._conn.execute(f"ALTER TABLE events ADD COLUMN {column} INTEGER")
+        if "start_source" not in cols or "end_estimated" not in cols:
+            with self._conn:
+                self._conn.execute("BEGIN")
+                if "start_source" not in cols:
+                    # The old catalog cannot distinguish real starts from fallback times.
+                    self._conn.execute("ALTER TABLE events ADD COLUMN start_source TEXT NOT NULL DEFAULT 'legacy'")
+                    # Previously persisted positives came from YouTube TV's ambiguous LIVE badge.
+                    self._conn.execute("UPDATE events SET broadcast_live = NULL WHERE broadcast_live = 1")
+                if "end_estimated" not in cols:
+                    self._conn.execute("ALTER TABLE events ADD COLUMN end_estimated INTEGER NOT NULL DEFAULT 1")
         self._conn.execute("CREATE TABLE IF NOT EXISTS station_logos (station TEXT PRIMARY KEY, url TEXT NOT NULL)")
         self._remember_station_logos(self._conn, self.events())
         self._conn.commit()
@@ -192,8 +202,8 @@ class Catalog:
             self._remember_station_logos(cur, airings)
             cur.executemany(
                 """
-                INSERT INTO events(video_id, title, station, kind, start_ts, end_ts, deeplink, live, source, sport, entity_id, channel, artwork, artwork_secondary, station_logo, language, broadcast_live, first_run, is_repeat)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO events(video_id, title, station, kind, start_ts, end_ts, deeplink, live, source, sport, entity_id, channel, artwork, artwork_secondary, station_logo, language, broadcast_live, first_run, is_repeat, start_source, end_estimated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(video_id, start_ts) DO UPDATE SET
                     title = excluded.title,
                     station = excluded.station,
@@ -211,7 +221,9 @@ class Catalog:
                     language = excluded.language,
                     broadcast_live = excluded.broadcast_live,
                     first_run = excluded.first_run,
-                    is_repeat = excluded.is_repeat
+                    is_repeat = excluded.is_repeat,
+                    start_source = excluded.start_source,
+                    end_estimated = excluded.end_estimated
                 """,
                 [
                     self._row_values(item)
@@ -249,10 +261,17 @@ class Catalog:
         visible_count: Optional[int] = None,
         watchable_count: Optional[int] = None,
         dropped: Optional[int] = None,
+        lane_count: Optional[int] = None,
     ) -> None:
-        with self._lock:
+        with self._lock, self._conn:
             cur = self._conn.cursor()
-            cur.execute("DELETE FROM lanes")
+            # Keep the old lane numbers as hints until a full refresh replaces the catalog.
+            cur.execute("""
+                DELETE FROM lanes WHERE NOT EXISTS (
+                    SELECT 1 FROM events e WHERE e.video_id = lanes.video_id
+                    AND e.start_ts = lanes.start_ts AND e.start_source = 'legacy'
+                )
+            """)
             cur.executemany(
                 "INSERT INTO lanes(lane, video_id, start_ts, end_ts) VALUES (?, ?, ?, ?)",
                 [
@@ -269,12 +288,13 @@ class Catalog:
                 visible_count=visible_count,
                 watchable_count=watchable_count,
             )
-            self._conn.commit()
+            if lane_count is not None:
+                self._set_meta("lane_count", str(lane_count), cur)
 
     def replace_resolved(self, pairs: list[tuple[Airing, Airing]]) -> None:
         if not pairs:
             return
-        with self._lock:
+        with self._lock, self._conn:
             cur = self._conn.cursor()
             self._remember_station_logos(cur, [resolved for _, resolved in pairs])
             for previous, resolved in pairs:
@@ -284,8 +304,8 @@ class Catalog:
                 )
                 cur.execute(
                     """
-                    INSERT INTO events(video_id, title, station, kind, start_ts, end_ts, deeplink, live, source, sport, entity_id, channel, artwork, artwork_secondary, station_logo, language, broadcast_live, first_run, is_repeat)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO events(video_id, title, station, kind, start_ts, end_ts, deeplink, live, source, sport, entity_id, channel, artwork, artwork_secondary, station_logo, language, broadcast_live, first_run, is_repeat, start_source, end_estimated)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(video_id, start_ts) DO UPDATE SET
                         title = excluded.title,
                         station = excluded.station,
@@ -303,11 +323,12 @@ class Catalog:
                         language = excluded.language,
                         broadcast_live = excluded.broadcast_live,
                         first_run = excluded.first_run,
-                        is_repeat = excluded.is_repeat
+                        is_repeat = excluded.is_repeat,
+                        start_source = excluded.start_source,
+                        end_estimated = excluded.end_estimated
                     """,
                     self._row_values(resolved),
                 )
-            self._conn.commit()
 
     def touch_refresh(self) -> None:
         with self._lock:
@@ -478,6 +499,8 @@ class Catalog:
             item.broadcast_live,
             item.first_run,
             item.is_repeat,
+            item.start_source,
+            item.end_estimated,
         )
 
     def _row_to_airing(self, row: sqlite3.Row) -> Airing:
@@ -503,6 +526,8 @@ class Catalog:
             artwork_secondary=str(row["artwork_secondary"]) if "artwork_secondary" in keys else "",
             station_logo=str(row["station_logo"]) if "station_logo" in keys else "",
             language=str(row["language"]) if "language" in keys else "",
+            start_source=str(row["start_source"]),
+            end_estimated=bool(row["end_estimated"]),
             **{name: bool(row[name]) if name in keys and row[name] is not None else None
                for name in ("broadcast_live", "first_run", "is_repeat")},
         )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import secrets
 from dataclasses import replace
 from contextlib import asynccontextmanager
@@ -52,6 +53,7 @@ from yttv_epg.sports import (
 ROOT = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(ROOT / "templates"))
 SCRIPT_VERSION = hashlib.sha256((ROOT / "static" / "app.js").read_bytes()).hexdigest()[:16]
+MAX_LANE_COUNT = 750
 
 
 class State:
@@ -120,7 +122,7 @@ def _with_espn_sports(events: Optional[list[Airing]] = None, *, apply_language_f
     rows = events if events is not None else state.catalog.events(kind="event")
     if apply_language_filter and state.catalog.hide_spanish():
         rows = [item for item in rows if broadcast_language(item) != "es"]
-    return merge_airings(apply_espn_sports(merge_airings(rows), state.espn_listings))
+    return merge_airings(apply_espn_sports(merge_airings(rows), state.espn_listings, fill_times=False))
 
 
 def _watchable_events(events: Optional[list[Airing]] = None) -> list[Airing]:
@@ -129,6 +131,7 @@ def _watchable_events(events: Optional[list[Airing]] = None) -> list[Airing]:
         for item in _with_espn_sports(events)
         if (
             item.watch_id()
+            or item.start_source == "date"
             or is_upcoming_linear_matchup(item.station, item.title)
         )
         and not is_non_sports_station(item.station)
@@ -144,7 +147,16 @@ def _visible_events(
     rows = _with_espn_sports(events, apply_language_filter=True)
     sports = hidden_sports if hidden_sports is not None else state.catalog.hidden_sports()
     channels = hidden_channels if hidden_channels is not None else state.catalog.hidden_channels()
-    return visible_events(rows, sports, channels, require_watch_link=True)
+    return visible_events(
+        (item for item in rows if item.has_scheduled_start),
+        sports,
+        channels,
+        require_watch_link=True,
+    )
+
+
+def _filter_revision(hidden_sports: list[str], hidden_channels: list[str]) -> str:
+    return hashlib.sha256(json.dumps([hidden_sports, hidden_channels]).encode()).hexdigest()
 
 
 def _meta_int(meta: dict[str, str], key: str, default: int = 0) -> int:
@@ -155,12 +167,27 @@ def _meta_int(meta: dict[str, str], key: str, default: int = 0) -> int:
 
 
 def _set_lane_cache(assignments: list[LaneAssignment]) -> list[LaneAssignment]:
-    state.lane_assignments = [row for row in assignments if row.airing.watch_id()]
+    state.lane_assignments = [
+        row for row in assignments if row.airing.watch_id() and row.airing.has_scheduled_start
+    ]
     return state.lane_assignments
 
 
-def _pack_visible(visible: list[Airing]) -> list[LaneAssignment]:
-    return pack_lanes(visible, settings.lane_count, previous=_labeled_assignments())
+def _lane_count(meta: dict[str, str] | None = None) -> int:
+    return _meta_int(state.catalog.meta() if meta is None else meta, "lane_count", settings.lane_count)
+
+
+def _pack_visible(
+    visible: list[Airing], lane_count: int | None = None, *, keep_legacy_lanes: bool = False,
+) -> list[LaneAssignment]:
+    previous = _labeled_assignments()
+    if keep_legacy_lanes:
+        previous.extend(row for row in state.catalog.assignments() if row.airing.start_source == "legacy")
+    return pack_lanes(
+        visible,
+        _lane_count() if lane_count is None else lane_count,
+        previous=previous,
+    )
 
 
 def _store_lanes(
@@ -168,6 +195,7 @@ def _store_lanes(
     *,
     visible_count: int,
     watchable_count: int,
+    lane_count: int | None = None,
 ) -> None:
     dropped = max(0, visible_count - len(assignments))
     state.catalog.replace_lanes(
@@ -175,6 +203,7 @@ def _store_lanes(
         visible_count=visible_count,
         watchable_count=watchable_count,
         dropped=dropped,
+        lane_count=lane_count,
     )
     _set_lane_cache(assignments)
 
@@ -207,7 +236,7 @@ async def _refresh_espn_listings(force: bool = False) -> bool:
     if listings:
         state.espn_listings = listings
         state.espn_fetched_at = now
-        events = apply_espn_sports(state.catalog.events(), listings)
+        events = apply_espn_sports(state.catalog.events(), listings, fill_times=False)
         if events:
             state.catalog.update_sports(events)
             visible = _visible_events(events)
@@ -444,7 +473,7 @@ async def refresh_catalog() -> dict[str, Any]:
             )
             visible = _visible_events(events)
             watchable = _watchable_events(events)
-            assignments = _pack_visible(visible)
+            assignments = _pack_visible(visible, keep_legacy_lanes=True)
             linear_ignored = len(mined.airings) - len(events)
             state.catalog.replace(
                 events,
@@ -502,7 +531,8 @@ async def refresh_watch_ids() -> dict[str, Any]:
                 for previous, updated in zip(candidates, resolved):
                     if not isinstance(updated, Airing):
                         continue
-                    if updated.watch_id() and updated.watch_id() != previous.watch_id():
+                    gained_start = updated.has_scheduled_start and not previous.has_scheduled_start
+                    if updated.watch_id() and (gained_start or updated.watch_id() != previous.watch_id()):
                         pairs.append((previous, updated))
             if pairs:
                 state.catalog.replace_resolved(pairs)
@@ -643,7 +673,8 @@ async def dashboard(request: Request) -> HTMLResponse:
     visible = _visible_events(all_events, hidden, hidden_channels)
     linked = _watchable_events(all_events)
     zone = local_tz()
-    shown = linked[:2000]
+    shown = apply_gracenote(linked[:2000], load_grid(settings.gracenote_grid_file))
+    live_on_air = state.catalog.xmltv_live_on_air()
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -661,14 +692,16 @@ async def dashboard(request: Request) -> HTMLResponse:
             "all_event_count": len(linked),
             "shown_count": len(shown),
             "linear_count": int(meta.get("linear_ignored") or 0),
-            "event_groups": group_events_for_ui(linked, tz=zone, limit=2000),
+            "event_groups": group_events_for_ui(shown, tz=zone, limit=2000, live_on_air=live_on_air),
             "sports": sport_counts(linked),
             "channels": channel_counts(linked),
             "hidden_sports": hidden,
             "hidden_channels": hidden_channels,
+            "filter_revision": _filter_revision(hidden, hidden_channels),
             "hide_spanish": state.catalog.hide_spanish(),
-            "xmltv_live_on_air": state.catalog.xmltv_live_on_air(),
-            "lane_count": settings.lane_count,
+            "xmltv_live_on_air": live_on_air,
+            "lane_count": _lane_count(meta),
+            "max_lane_count": max(MAX_LANE_COUNT, settings.lane_count, _lane_count(meta)),
             "lanes_used": int(meta.get("lanes_used") or 0),
             "dropped_events": int(meta.get("dropped_events") or 0),
             "public_base_url": _public_base_url(request),
@@ -691,6 +724,7 @@ async def api_status() -> dict[str, Any]:
         "session_expired": auth["session_expired"],
         "hide_spanish": state.catalog.hide_spanish(),
         "xmltv_live_on_air": state.catalog.xmltv_live_on_air(),
+        "filter_revision": _filter_revision(state.catalog.hidden_sports(), state.catalog.hidden_channels()),
         "last_refresh": meta.get("last_refresh"),
         "last_error": auth["last_error"],
         "refreshing": state.refreshing,
@@ -700,6 +734,7 @@ async def api_status() -> dict[str, Any]:
         "all_events": _meta_int(meta, "watchable_count"),
         "linear": int(meta.get("linear_ignored") or 0),
         "lanes_used": int(meta.get("lanes_used") or 0),
+        "lane_count": _lane_count(meta),
         "dropped": int(meta.get("dropped_events") or 0),
     }
 
@@ -789,6 +824,12 @@ async def set_filters(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Invalid JSON") from exc
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="Expected a JSON object")
+    lane_count = None
+    if "lane_count" in body:
+        lane_count = body["lane_count"]
+        maximum = max(MAX_LANE_COUNT, settings.lane_count, _lane_count())
+        if type(lane_count) is not int or not 1 <= lane_count <= maximum:
+            raise HTTPException(status_code=400, detail=f"Lane count must be a whole number from 1 to {maximum}.")
     hidden = state.catalog.hidden_sports()
     hidden_channels = state.catalog.hidden_channels()
     # Validate all boolean preferences before committing any of them.
@@ -811,22 +852,29 @@ async def set_filters(request: Request) -> dict[str, Any]:
         hidden_channels = toggle_name(hidden_channels, channel_filter(toggle_channel))
     state.catalog.set_hidden_sports(hidden)
     state.catalog.set_hidden_channels(hidden_channels)
+    hidden = state.catalog.hidden_sports()
     hidden_channels = state.catalog.hidden_channels()
     visible = _visible_events(None, hidden, hidden_channels)
     watchable = _watchable_events()
+    assignments = _pack_visible(visible, lane_count)
     _store_lanes(
-        _pack_visible(visible),
+        assignments,
         visible_count=len(visible),
         watchable_count=len(watchable),
+        lane_count=lane_count,
     )
     return {
         "ok": True,
-        "hidden": state.catalog.hidden_sports(),
-        "hidden_channels": state.catalog.hidden_channels(),
+        "hidden": hidden,
+        "hidden_channels": hidden_channels,
+        "filter_revision": _filter_revision(hidden, hidden_channels),
         "hide_spanish": state.catalog.hide_spanish(),
         "xmltv_live_on_air": state.catalog.xmltv_live_on_air(),
         "events": len(visible),
         "all_events": len(watchable),
+        "lane_count": _lane_count(),
+        "lanes_used": len({row.lane for row in assignments}),
+        "dropped": max(0, len(visible) - len(assignments)),
     }
 
 
@@ -865,7 +913,7 @@ async def list_events(kind: str = Query("event")) -> dict[str, Any]:
             for item in _with_espn_sports(rows)
             if item.kind == "linear"
             or (
-                (item.watch_id() or is_upcoming_linear_matchup(item.station, item.title))
+                (item.watch_id() or item.start_source == "date" or is_upcoming_linear_matchup(item.station, item.title))
                 and not is_non_sports_station(item.station)
                 and is_sports_event(item.station, item.title, item.sport)
             )
@@ -881,7 +929,7 @@ async def whatson_lane(
     include: str = Query(""),
 ):
     _ = include
-    if lane < 1 or lane > settings.lane_count:
+    if lane < 1 or lane > _lane_count():
         raise HTTPException(status_code=404, detail="Unknown lane")
     airing = whatson(_labeled_assignments(), lane, datetime.now(timezone.utc))
     if airing and not airing.watch_id() and state.session:
@@ -902,7 +950,7 @@ async def whatson_lane(
 async def xmltv_feed(request: Request) -> Response:
     body = xmltv(
         _labeled_assignments(),
-        settings.lane_count,
+        _lane_count(),
         base_url=_public_base_url(request),
         now=datetime.now(timezone.utc),
         include_subtitle=settings.xmltv_include_subtitle,
@@ -917,7 +965,7 @@ async def xmltv_feed(request: Request) -> Response:
 async def playlist(request: Request) -> PlainTextResponse:
     body = m3u(
         base_url=_public_base_url(request),
-        lane_count=settings.lane_count,
+        lane_count=_lane_count(),
         start_channel=settings.start_channel,
         package_name=settings.package_name,
         alternate_package_name=settings.alternate_package_name,
@@ -933,7 +981,7 @@ async def playlist(request: Request) -> PlainTextResponse:
 async def export_channels(request: Request) -> list[dict[str, str | int]]:
     return apituner_export(
         base_url=_public_base_url(request),
-        lane_count=settings.lane_count,
+        lane_count=_lane_count(),
         start_channel=settings.start_channel,
         package_name=settings.package_name,
         alternate_package_name=settings.alternate_package_name,

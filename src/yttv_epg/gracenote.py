@@ -17,6 +17,8 @@ from yttv_epg.parse import Airing
 from yttv_epg.sports import channel_identity, is_sports_event
 
 log = logging.getLogger(__name__)
+REPEAT_FLAGS = {"repeat", "replay", "rerun", "previously shown"}
+DELAY_FLAGS = {"tape delay", "tape delayed"}
 
 
 def _text(value: object) -> str:
@@ -96,14 +98,19 @@ def apply_gracenote(events: list[Airing], listings: tuple[Listing, ...]) -> list
         matches = [row for row in index.get((_station(event.station), event.start, event.end), [])
                    if _text(event.title) in row.titles]
         # Conflicting duplicates provide no usable evidence.
-        if (not matches or len({row.flags for row in matches}) != 1
+        if (not event.has_scheduled_start or event.end_estimated
+                or not matches or len({row.flags for row in matches}) != 1
                 or not is_sports_event(event.station, event.title, event.sport)):
             result.append(event)
             continue
         flags = matches[0].flags
         changes = {"gracenote_flags": tuple(sorted(flags))}
-        if event.is_repeat is not True:
-            if "live" in flags and event.broadcast_live is None:
+        if flags & REPEAT_FLAGS:
+            changes.update(is_repeat=True, broadcast_live=False, first_run=False)
+        elif event.is_repeat is not True:
+            if flags & DELAY_FLAGS:
+                changes["broadcast_live"] = False
+            elif "live" in flags and event.broadcast_live is None:
                 changes["broadcast_live"] = True
             if "new" in flags and event.first_run is None:
                 changes["first_run"] = True

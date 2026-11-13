@@ -148,6 +148,7 @@ class EspnListing:
     start: Optional[datetime] = None
     league: str = ""
     network: str = ""
+    end: Optional[datetime] = None
 
     def teams(self) -> Optional[frozenset[str]]:
         return matchup_teams(self.name)
@@ -228,7 +229,7 @@ def _dedupe_listings(listings: Iterable[EspnListing]) -> list[EspnListing]:
     for item in listings:
         teams = item.teams()
         start_ts = int(item.start.timestamp()) if item.start else 0
-        key = (teams or item.name, item.sport, start_ts, item.network)
+        key = (teams or item.name, item.sport, start_ts, item.network, item.end)
         if key in seen:
             continue
         seen.add(key)
@@ -269,12 +270,13 @@ async def _fetch_airings(
 def apply_espn_sports(
     airings: Iterable[Airing],
     listings: Iterable[EspnListing],
+    *,
+    fill_times: bool = True,
 ) -> list[Airing]:
     listings = list(listings)
     indexed = _index_listings(listings)
     labeled: list[Airing] = []
     for item in airings:
-        listing = _listing_for_matchup(item, indexed)
         sport = espn_sport_for(item, indexed)
         updates: dict[str, Any] = {}
         # Broadcaster corrections require an exact normalized title, a close
@@ -288,10 +290,16 @@ def apply_espn_sports(
                 updates.update(station="ESPN+", channel="ESPN+", station_logo="")
         if sport and sport != item.sport:
             updates["sport"] = sport
-        if listing and listing.start and _placeholder_kickoff(item.start):
-            if _same_local_day(item.start, listing.start):
-                updates["start"] = listing.start
-                updates["end"] = listing.start + (item.end - item.start)
+        if fill_times and item.start_source == "date" and item.is_repeat is not True:
+            listing = _listing_for_matchup(item, indexed)
+            if listing and listing.start:
+                updates.update(start=listing.start, start_source="espn")
+                if not item.end_estimated and item.end > listing.start:
+                    updates["end"] = item.end
+                elif listing.end and listing.end > listing.start and listing.network:
+                    updates.update(end=listing.end, end_estimated=False)
+                else:
+                    updates.update(end=listing.start + (item.end - item.start), end_estimated=True)
         if updates:
             labeled.append(replace(item, **updates))
         else:
@@ -312,10 +320,13 @@ def _listing_for_matchup(airing: Airing, indexed: EspnIndex) -> Optional[EspnLis
             if _teams_compatible(teams, listing_teams)
         ]
     timed = [item for item in candidates if item.start and _same_local_day(airing.start, item.start)]
-    pool = timed or [item for item in candidates if item.start]
-    if not pool:
+    station = channel_identity(airing.station)
+    on_station = [item for item in timed if item.network and channel_identity(item.network) == station]
+    pool = on_station or [item for item in timed if not item.network]
+    if not pool or len({item.start for item in pool}) != 1:
         return None
-    return min(pool, key=lambda item: _start_delta(airing.start, item.start))
+    end = {item.end for item in pool}
+    return replace(pool[0], end=end.pop() if len(end) == 1 else None)
 
 
 def _teams_compatible(left: frozenset[str], right: Optional[frozenset[str]]) -> bool:
@@ -329,11 +340,6 @@ def _teams_compatible(left: frozenset[str], right: Optional[frozenset[str]]) -> 
 def _same_local_day(left: datetime, right: datetime) -> bool:
     zone = ZoneInfo("America/New_York")
     return left.astimezone(zone).date() == right.astimezone(zone).date()
-
-
-def _placeholder_kickoff(start: datetime) -> bool:
-    local = start.astimezone(ZoneInfo("America/New_York"))
-    return local.hour == 12 and local.minute == 0
 
 
 def espn_sport_for(airing: Airing, indexed: EspnIndex) -> Optional[str]:
@@ -428,6 +434,7 @@ def _listing_from_row(row: dict[str, Any]) -> Optional[EspnListing]:
         name=name,
         sport=sport,
         start=_parse_dt(row.get("startDateTime")),
+        end=_parse_dt(row.get("endDateTime")),
         league=_nested_name(row.get("league")),
         network=_nested_name(row.get("network")),
     )

@@ -13,18 +13,66 @@ function harness(checked=false) {
   const liveListeners={};
   const liveToggle={checked:false,defaultChecked:false,addEventListener(name,handler){liveListeners[name]=handler}};
   const error={textContent:''};
+  const laneListeners = {};
+  const laneInput = { defaultValue: "128", value: "128", get valueAsNumber() { return Number(this.value); } };
+  const laneStatus = { hidden: true };
+  const laneError = { textContent: "" };
+  const laneButton = {};
+  const lanesUsed = {};
+  const laneElements = {
+    "lane-count": laneInput,
+    "lane-count-form": { addEventListener(name, handler) { laneListeners[name] = handler; } },
+    "lane-count-status": laneStatus,
+    "lane-count-error": laneError,
+    "save-lane-count": laneButton,
+    "lanes-used": lanesUsed,
+  };
   const context={URL,console,setInterval(){},sessionStorage:{getItem(){return null},setItem(){},removeItem(){}},
     window:{location:{reload(){reloads++}},scrollY:0},
     document:{body:{dataset:{signedIn:'false',sessionExpired:'false',lastRefresh:'initial',events:'0',allEvents:'0'}},
-      getElementById(id){return id==='hide-spanish'?toggle:id==='xmltv-live-on-air'?liveToggle:id==='auth-error'?error:null},
+      getElementById(id){return id==='hide-spanish'?toggle:id==='xmltv-live-on-air'?liveToggle:id==='auth-error'?error:laneElements[id] ?? null},
       querySelectorAll(){return []},querySelector(){return null},addEventListener(){}},
     fetch(url,options){return new Promise((resolve,reject)=>requests.push({url,options,resolve,reject}))}};
   vm.createContext(context); vm.runInContext(source,context);
   const respond=(request,data,ok=true)=>request.resolve({ok,json:async()=>data,statusText:'Save failed'});
   return {context,requests,toggle,liveToggle,liveListeners,error,listeners,respond,get reloads(){return reloads},
+    laneInput,laneStatus,laneError,laneButton,lanesUsed,laneListeners,
     run(expression){return vm.runInContext(expression,context)},
     async prime(){respond(requests.shift(),status({hide_spanish:checked}));await tick()}};
 }
+
+test("saving a lane count updates the stats and ignores stale polling", async () => {
+  const h = harness();
+  await h.prime();
+  const poll = h.run("pollStatus()");
+  const stale = h.requests.shift();
+  h.laneInput.value = "160";
+  const save = h.laneListeners.submit({ preventDefault() {} });
+  const request = h.requests.shift();
+  assert.deepEqual(JSON.parse(request.options.body), { lane_count: 160 });
+  assert.equal(h.laneButton.disabled, true);
+  h.respond(request, { lane_count: 160, lanes_used: 90, dropped: 0 });
+  await save;
+  h.respond(stale, status({ lane_count: 128 }));
+  await poll;
+  assert.equal(h.lanesUsed.textContent, "90 / 160");
+  assert.match(h.laneStatus.textContent, /Import only the new lanes/);
+  assert.equal(h.laneButton.disabled, false);
+  assert.equal(h.reloads, 0);
+});
+
+test("failed lane count save keeps the draft available for retry", async () => {
+  const h = harness();
+  await h.prime();
+  h.laneInput.value = "64";
+  const save = h.laneListeners.submit({ preventDefault() {} });
+  h.respond(h.requests.shift(), { detail: "Save failed" }, false);
+  await save;
+  assert.equal(h.laneError.textContent, "Save failed");
+  assert.equal(h.laneStatus.hidden, true);
+  assert.equal(h.laneInput.value, "64");
+  assert.equal(h.run("boot.laneCount"), 128);
+});
 test('status response cannot reload while a filter save is pending',async()=>{
  const h=harness();await h.prime();const poll=h.run('pollStatus()');const stale=h.requests.shift();
  h.toggle.checked=true;const save=h.run('postFilter({hide_spanish:true}, "Saving")');const request=h.requests.shift();
@@ -82,4 +130,57 @@ test('Live toggle rolls back HTTP and network errors and prevents overlapping sa
 test('Live preference changed in another tab triggers reload',async()=>{
  const h=harness();await h.prime();const poll=h.run('pollStatus()');
  h.respond(h.requests.shift(),status({xmltv_live_on_air:true}));await poll;assert.equal(h.reloads,1);
+});
+
+test('a saved sport or channel change in another tab reloads with unchanged counts', async () => {
+  const h = harness();
+  await h.prime();
+
+  const poll = h.run('pollStatus()');
+  h.respond(h.requests.shift(), status({filter_revision: 'other-tab'}));
+  await poll;
+
+  assert.equal(h.reloads, 1);
+});
+
+test('the first poll detects filters changed since the dashboard was rendered', async () => {
+  const h = harness();
+  h.respond(h.requests.shift(), status({filter_revision: 'other-tab'}));
+  await tick();
+
+  assert.equal(h.reloads, 1);
+});
+
+test('saving filters adopts the server revision and ignores an older poll', async () => {
+  const h = harness();
+  await h.prime();
+  const poll = h.run('pollStatus()');
+  const stale = h.requests.shift();
+
+  const save = h.run('postFilter({toggle_channel: "ESPN"}, "Saving")');
+  h.respond(h.requests.shift(), {hidden_channels: ['ESPN'], filter_revision: 'saved'});
+  await save;
+  h.respond(stale, status({filter_revision: 'old'}));
+  await poll;
+
+  const current = h.run('pollStatus()');
+  h.respond(h.requests.shift(), status({filter_revision: 'saved'}));
+  await current;
+
+  assert.equal(h.reloads, 0);
+});
+
+test('saving the Live preference triggers a reload so the rendered badges update', async () => {
+  const h = harness();
+  await h.prime();
+  const save = h.run('postFilter({xmltv_live_on_air: true}, "Saving")');
+  h.respond(h.requests.shift(), {xmltv_live_on_air: true});
+  await save;
+  assert.equal(h.liveToggle.checked, true);
+
+  const poll = h.run('pollStatus()');
+  h.respond(h.requests.shift(), status({xmltv_live_on_air: true}));
+  await poll;
+
+  assert.equal(h.reloads, 1);
 });

@@ -24,7 +24,7 @@ def pack_lanes(
     seen: set[tuple[str, int]] = set()
     for airing in events:
         watch = airing.watch_id()
-        if not watch:
+        if not watch or not airing.has_scheduled_start:
             continue
         key = (watch, int(airing.start.timestamp()))
         if key in seen:
@@ -84,7 +84,7 @@ def whatson(
     matches = [
         row.airing
         for row in assignments
-        if row.lane == lane and row.airing.start <= when < row.airing.end
+        if row.lane == lane and row.airing.has_scheduled_start and row.airing.start <= when < row.airing.end
     ]
     if not matches:
         return None
