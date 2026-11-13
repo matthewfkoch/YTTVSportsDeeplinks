@@ -116,6 +116,28 @@ to Channels. This app's `/playlist.m3u` contains JSON resolver URLs for tuners.
 See the [APITuner setup guide](https://github.com/matthewfkoch/APITuner#configure-channels)
 for Android TV and encoder setup.
 
+#### APITuner settings for recording
+
+In APITuner's **Options**, use these settings to give YouTube TV time to show
+video before Channels DVR receives the encoder feed:
+
+- **Stream during tune:** Off
+- **Wait for playback signal:** On
+- **Ready settle (s):** 4
+
+These options apply to the whole APITuner instance. With **Stream during tune**
+off, APITuner waits for its playback check and the settle delay before opening
+the encoder stream. Slow tunes can still time out in Channels DVR.
+
+We tested these settings with APITuner v0.1.34 and YTTV Sports Deeplinks v0.3.1
+by scheduling a 45-second Islanders–Kings recording through the regular
+**YTTV Sports** source in Channels DVR. With **Ready settle** at 1 second, the
+original recording and DVR web playback both opened with about 2.4 seconds of
+black video. At 4 seconds, Channels DVR waited about 6.1 seconds for the stream
+and completed the recording without a timeout. Both the original recording and
+DVR web playback showed the broadcast on the first frame, had audio, and had no
+detected black interval of 80 milliseconds or longer.
+
 ### Change the lane count
 
 In the dashboard's **Guide** card, set **Lane count** and click **Save**.
