@@ -18,7 +18,7 @@ env:
 jobs:
   test:
     name: Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
 
@@ -39,7 +39,7 @@ jobs:
   publish-docker:
     name: Publish Docker image
     needs: [test]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
 
@@ -120,7 +120,7 @@ jobs:
   github-release:
     name: Publish GitHub Release
     needs: [publish-docker]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     if: github.ref_type == 'tag'
     steps:
       - uses: actions/checkout@v7
