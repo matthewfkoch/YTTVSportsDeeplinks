@@ -134,9 +134,10 @@ by scheduling a 45-second Islanders–Kings recording through the regular
 **YTTV Sports** source in Channels DVR. With **Ready settle** at 1 second, the
 original recording and DVR web playback both opened with about 2.4 seconds of
 black video. At 4 seconds, Channels DVR waited about 6.1 seconds for the stream
-and completed the recording without a timeout. Both the original recording and
-DVR web playback showed the broadcast on the first frame, had audio, and had no
-detected black interval of 80 milliseconds or longer.
+and saved 38.7 seconds of the scheduled window without a timeout. Both the
+original recording and DVR web playback showed the broadcast on the first
+frame, had audio, and had no detected black interval of 80 milliseconds or
+longer.
 
 ### Change the lane count
 
