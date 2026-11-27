@@ -393,7 +393,6 @@ class Catalog:
     def set_error(self, message: str) -> None:
         with self._lock:
             self._set_meta("last_error", for_ui(message))
-            self._set_meta("last_refresh", datetime.now(timezone.utc).isoformat())
             self._conn.commit()
 
     def clear_error(self) -> None:

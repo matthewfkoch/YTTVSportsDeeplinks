@@ -1309,3 +1309,206 @@ async def test_evidence_failure_does_not_fail_guide_or_kill_worker(monkeypatch):
     assert collect.await_count == 2
     assert module.state.evidence_error is None
     assert not module.state.refresh_lock.locked()
+
+
+@pytest.mark.asyncio
+async def test_refresh_loop_surfaces_oserror_in_health_and_clears_on_recovery(monkeypatch, caplog):
+    import asyncio
+    import errno
+    import logging
+    from yttv_epg import app as module
+    from yttv_epg.session_store import SavedSession
+
+    monkeypatch.setattr(module.state, "last_full_mine_at", None)
+    monkeypatch.setattr(module.state, "refresh_error", None)
+    monkeypatch.setattr(module.state, "storage_error", None)
+    with TestClient(app) as client:
+        module.state.session = SavedSession(
+            kind="cookies",
+            cookies=[{"name": "SAPISID", "value": "x", "domain": ".youtube.com"}],
+        )
+        module.state.store.save(module.state.session)
+        try:
+            err = OSError(errno.EROFS, "Read-only file system", "/data/.session.enc-abc")
+            monkeypatch.setattr(module.asyncio, "sleep", AsyncMock(side_effect=[asyncio.CancelledError()]))
+            monkeypatch.setattr(module, "prune_chrome_profile", lambda *_a, **_kw: 0)
+            monkeypatch.setattr(module, "refresh_catalog", AsyncMock(side_effect=err))
+            with caplog.at_level(logging.ERROR, logger="yttv_epg.app"):
+                with pytest.raises(asyncio.CancelledError):
+                    await module.refresh_loop()
+            assert "Background guide refresh failed" in caplog.text
+            health = client.get("/health").json()
+            assert health["ok"] is False
+            assert "Read-only file system" in (health["last_error"] or "")
+            status = client.get("/api/status").json()
+            assert "Read-only file system" in (status["last_error"] or "")
+
+            async def recovered_refresh():
+                module.state.refresh_error = None
+                module.state.storage_error = None
+                return {"ok": True}
+
+            monkeypatch.setattr(module.asyncio, "sleep", AsyncMock(side_effect=[asyncio.CancelledError()]))
+            monkeypatch.setattr(module, "refresh_catalog", AsyncMock(side_effect=recovered_refresh))
+            with pytest.raises(asyncio.CancelledError):
+                await module.refresh_loop()
+            after = client.get("/health").json()
+            assert after["ok"] is True
+            assert after["last_error"] is None
+        finally:
+            client.post("/api/auth/logout")
+
+
+@pytest.mark.asyncio
+async def test_refresh_loop_catches_oserror_during_signed_out_chrome_sync(monkeypatch, caplog):
+    import asyncio
+    import errno
+    import logging
+    from yttv_epg import app as module
+
+    monkeypatch.setattr(module.state, "refresh_error", None)
+    monkeypatch.setattr(module.state, "storage_error", None)
+    monkeypatch.setattr(module.settings, "enable_chrome", True)
+    err = OSError(errno.EROFS, "Read-only file system", "/data/.session.enc-abc")
+    sync = AsyncMock(side_effect=[err, True])
+    monkeypatch.setattr(module, "_sync_session_from_chrome", sync)
+    seen_errors: list[tuple[str | None, str | None]] = []
+
+    async def fake_sleep(_delay: float) -> None:
+        seen_errors.append((module.state.refresh_error, module.state.storage_error))
+        if len(seen_errors) >= 2:
+            raise asyncio.CancelledError()
+
+    monkeypatch.setattr(module.asyncio, "sleep", fake_sleep)
+    with caplog.at_level(logging.ERROR, logger="yttv_epg.app"):
+        with pytest.raises(asyncio.CancelledError):
+            await module.refresh_loop()
+    assert sync.await_count == 2
+    assert "Background guide refresh failed" in caplog.text
+    assert seen_errors[0][0] and "Read-only file system" in seen_errors[0][0]
+    assert seen_errors[0][1] and "Read-only file system" in seen_errors[0][1]
+    assert seen_errors[1] == (None, None)
+
+
+def test_api_refresh_reports_oserror_over_stale_catalog_error(monkeypatch):
+    import errno
+    from yttv_epg import app as module
+    from yttv_epg.session_store import SavedSession
+
+    with TestClient(app) as client:
+        module.state.session = SavedSession(
+            kind="cookies",
+            cookies=[{"name": "SAPISID", "value": "x", "domain": ".youtube.com"}],
+        )
+        module.state.store.save(module.state.session)
+        module.state.catalog.set_error("Old stale error")
+        try:
+            err = OSError(errno.EROFS, "Read-only file system", "/data/.session.enc-tmp")
+            monkeypatch.setattr(module, "_sync_session_from_chrome", AsyncMock(side_effect=err))
+            response = client.post("/api/refresh")
+            assert response.status_code == 502
+            detail = response.json()["detail"]
+            assert "Read-only file system" in detail
+            assert "Old stale error" not in detail
+            health = client.get("/health").json()
+            assert health["ok"] is False
+            assert "Read-only file system" in (health["last_error"] or "")
+        finally:
+            client.post("/api/auth/logout")
+
+
+@pytest.mark.asyncio
+async def test_mark_refresh_failure_records_in_memory_when_catalog_readonly(monkeypatch):
+    import sqlite3
+    from yttv_epg import app as module
+    from yttv_epg.innertube import MineError
+
+    with TestClient(app) as client:
+        monkeypatch.setattr(
+            module.state.catalog,
+            "set_error",
+            lambda _msg: (_ for _ in ()).throw(sqlite3.OperationalError("attempt to write a readonly database")),
+        )
+        try:
+            await module._mark_refresh_failure(MineError("Guide timed out"))
+            health = client.get("/health").json()
+            assert health["ok"] is False
+            assert health["last_error"] == "Guide timed out"
+        finally:
+            module.state.refresh_error = None
+            module.state.storage_error = None
+
+
+def test_health_and_status_stay_up_when_catalog_meta_fails(monkeypatch):
+    import sqlite3
+    from yttv_epg import app as module
+
+    with TestClient(app) as client:
+        monkeypatch.setattr(
+            module.state.catalog,
+            "meta",
+            lambda: (_ for _ in ()).throw(sqlite3.OperationalError("disk I/O error")),
+        )
+        health_resp = client.get("/health")
+        assert health_resp.status_code == 200
+        health = health_resp.json()
+        assert health["ok"] is False
+        assert "disk I/O error" in (health["last_error"] or "")
+
+        status_resp = client.get("/api/status")
+        assert status_resp.status_code == 200
+        status = status_resp.json()
+        assert "disk I/O error" in (status["last_error"] or "")
+
+
+def test_broadcast_evidence_read_tolerates_readonly_prune(tmp_path, monkeypatch):
+    import sqlite3
+    from datetime import datetime, timezone
+    from yttv_epg import app as module
+    from yttv_epg.detail_evidence import EvidenceStore
+    from yttv_epg.parse import Airing
+
+    game = Airing(
+        "VasWEa--oME",
+        "Virginia Tech at Clemson",
+        "ACC Network",
+        "event",
+        datetime(2026, 10, 28, 11, tzinfo=timezone.utc),
+        datetime(2026, 10, 28, 14, tzinfo=timezone.utc),
+        "",
+    )
+    store = EvidenceStore(tmp_path / "evidence.sqlite")
+    store.save(game, datetime.now(timezone.utc), error="TimeoutError")
+    monkeypatch.setattr(
+        store,
+        "prune",
+        lambda _now: (_ for _ in ()).throw(sqlite3.OperationalError("attempt to write a readonly database")),
+    )
+    monkeypatch.setattr(module.state, "evidence", store)
+    with TestClient(app) as client:
+        response = client.get("/api/broadcast-evidence")
+        assert response.status_code == 200
+        assert len(response.json()["records"]) == 1
+
+
+def test_configure_logging_attaches_handler_only_when_unconfigured():
+    import logging
+    from yttv_epg.app import _configure_logging
+
+    root = logging.getLogger()
+    pkg = logging.getLogger("yttv_epg")
+    orig_root_handlers = list(root.handlers)
+    orig_pkg_handlers = list(pkg.handlers)
+    orig_pkg_level = pkg.level
+    try:
+        root.handlers.clear()
+        pkg.handlers.clear()
+        _configure_logging()
+        assert len(pkg.handlers) == 1
+        assert pkg.level == logging.INFO
+        _configure_logging()
+        assert len(pkg.handlers) == 1
+    finally:
+        pkg.handlers[:] = orig_pkg_handlers
+        pkg.setLevel(orig_pkg_level)
+        root.handlers[:] = orig_root_handlers

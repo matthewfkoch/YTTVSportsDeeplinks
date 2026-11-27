@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import secrets
+import sqlite3
 from dataclasses import replace
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -59,6 +60,15 @@ STYLE_VERSION = hashlib.sha256((ROOT / "static" / "app.css").read_bytes()).hexdi
 MAX_LANE_COUNT = 750
 
 
+def _configure_logging() -> None:
+    pkg_logger = logging.getLogger("yttv_epg")
+    if not pkg_logger.handlers and not logging.getLogger().handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s"))
+        pkg_logger.addHandler(handler)
+        pkg_logger.setLevel(logging.INFO)
+
+
 class State:
     def __init__(self) -> None:
         self.store = SessionStore(settings.data_dir, settings.secret)
@@ -66,6 +76,8 @@ class State:
         self.evidence = EvidenceStore(settings.data_dir / "broadcast-evidence.sqlite")
         self.evidence_last_cycle: Optional[str] = None
         self.evidence_error: Optional[str] = None
+        self.refresh_error: Optional[str] = None
+        self.storage_error: Optional[str] = None
         self.http = httpx.AsyncClient(timeout=60.0, follow_redirects=True)
         self.innertube = InnerTubeClient(self.http)
         self.refresh_lock = asyncio.Lock()
@@ -276,14 +288,44 @@ async def _chrome_snapshot() -> dict[str, Any]:
         return {}
 
 
+def _format_refresh_error(exc: Exception) -> str:
+    detail = str(exc).strip()
+    return for_ui(f"{type(exc).__name__}: {detail}" if detail else type(exc).__name__)
+
+
+def _record_refresh_exception(exc: Exception) -> str:
+    message = _format_refresh_error(exc)
+    state.refresh_error = message
+    if isinstance(exc, (OSError, sqlite3.Error)):
+        state.storage_error = message
+    return message
+
+
+def _safe_catalog_meta() -> tuple[dict[str, str], Optional[str]]:
+    try:
+        return state.catalog.meta(), None
+    except (sqlite3.Error, OSError) as exc:
+        log.exception("Failed to read catalog metadata")
+        return {}, _format_refresh_error(exc)
+
+
 def _session_view(
     meta: Optional[dict[str, Any]] = None,
     chrome: Optional[dict[str, Any]] = None,
+    *,
+    storage_error: Optional[str] = None,
 ) -> dict[str, Any]:
-    meta = meta if meta is not None else state.catalog.meta()
+    if meta is None:
+        meta, read_error = _safe_catalog_meta()
+        storage_error = storage_error or read_error
     last_error = for_ui(meta.get("last_error")) or ""
     signed_in = state.store.signed_in
-    last_error = getattr(state.store, "load_error", "") or last_error
+    last_error = (
+        getattr(state.store, "load_error", "")
+        or storage_error
+        or state.refresh_error
+        or last_error
+    )
     chrome = chrome or {}
     live = bool(chrome.get("signed_in") and chrome.get("on_app"))
     if live:
@@ -370,11 +412,18 @@ async def _mark_refresh_failure(exc: Exception) -> str:
                 and chrome.get("on_app")
                 and await _sync_session_from_chrome()
             ):
-                state.catalog.set_error(GUIDE_STILL_SIGNED_IN)
-                return GUIDE_STILL_SIGNED_IN
+                message = GUIDE_STILL_SIGNED_IN
         except (ChromeError, httpx.HTTPError, RuntimeError):
             pass
-    state.catalog.set_error(message)
+        except (OSError, sqlite3.Error) as storage_exc:
+            log.exception("Could not sync Chromium session during refresh failure recovery")
+            state.storage_error = _format_refresh_error(storage_exc)
+    state.refresh_error = for_ui(message)
+    try:
+        state.catalog.set_error(message)
+    except (sqlite3.Error, OSError) as storage_exc:
+        log.exception("Could not persist refresh error to catalog")
+        state.storage_error = _format_refresh_error(storage_exc)
     return message
 
 
@@ -423,6 +472,8 @@ async def _activate_cookies(
     state.session = session
     state.store.save(session)
     state.catalog.clear_error()
+    state.refresh_error = None
+    state.storage_error = None
     try:
         result = await refresh_catalog()
     except Exception as exc:
@@ -494,6 +545,8 @@ async def refresh_catalog() -> dict[str, Any]:
                 await _sync_session_from_chrome()
                 if settings.allow_debug:
                     state.catalog.save_debug(settings.data_dir, "last_browse.json", mined.raw)
+                state.refresh_error = None
+                state.storage_error = None
                 return {
                     "ok": True,
                     "events": len(visible),
@@ -505,6 +558,11 @@ async def refresh_catalog() -> dict[str, Any]:
                     "client": mined.client,
                     "browse_id": mined.browse_id,
                 }
+            except (HTTPException, ChromeError, MineError, httpx.HTTPError):
+                raise
+            except Exception as exc:
+                _record_refresh_exception(exc)
+                raise
             finally:
                 await _park_chrome()
     finally:
@@ -521,39 +579,47 @@ async def refresh_watch_ids() -> dict[str, Any]:
     state.refreshing = True
     try:
         async with state.refresh_lock:
-            await _sync_session_from_chrome()
-            espn_changed = await _refresh_espn_listings()
-            session = _ensure_session()
-            candidates = _unresolved_soon(state.catalog.events(kind="event"))
-            pairs: list[tuple[Airing, Airing]] = []
-            if candidates:
-                try:
-                    resolved = await state.innertube.resolve_soon(session, dict(CLIENTS[0]), candidates)
-                except (ChromeError, MineError, httpx.HTTPError) as exc:
-                    await _mark_refresh_failure(exc)
-                    raise
-                for previous, updated in zip(candidates, resolved):
-                    if not isinstance(updated, Airing):
-                        continue
-                    gained_start = updated.has_scheduled_start and not previous.has_scheduled_start
-                    if updated.watch_id() and (gained_start or updated.watch_id() != previous.watch_id()):
-                        pairs.append((previous, updated))
-            if pairs:
-                state.catalog.replace_resolved(pairs)
+            try:
                 await _sync_session_from_chrome()
-            if pairs or espn_changed:
-                visible = _visible_events()
-                _store_lanes(
-                    _pack_visible(visible),
-                    visible_count=len(visible),
-                    watchable_count=len(_watchable_events()),
-                )
-                state.catalog.touch_refresh()
-            return {
-                "ok": True,
-                "resolved": len(pairs),
-                "changed": bool(pairs or espn_changed),
-            }
+                espn_changed = await _refresh_espn_listings()
+                session = _ensure_session()
+                candidates = _unresolved_soon(state.catalog.events(kind="event"))
+                pairs: list[tuple[Airing, Airing]] = []
+                if candidates:
+                    try:
+                        resolved = await state.innertube.resolve_soon(session, dict(CLIENTS[0]), candidates)
+                    except (ChromeError, MineError, httpx.HTTPError) as exc:
+                        await _mark_refresh_failure(exc)
+                        raise
+                    for previous, updated in zip(candidates, resolved):
+                        if not isinstance(updated, Airing):
+                            continue
+                        gained_start = updated.has_scheduled_start and not previous.has_scheduled_start
+                        if updated.watch_id() and (gained_start or updated.watch_id() != previous.watch_id()):
+                            pairs.append((previous, updated))
+                if pairs:
+                    state.catalog.replace_resolved(pairs)
+                    await _sync_session_from_chrome()
+                if pairs or espn_changed:
+                    visible = _visible_events()
+                    _store_lanes(
+                        _pack_visible(visible),
+                        visible_count=len(visible),
+                        watchable_count=len(_watchable_events()),
+                    )
+                    state.catalog.touch_refresh()
+                    state.storage_error = None
+                state.refresh_error = None
+                return {
+                    "ok": True,
+                    "resolved": len(pairs),
+                    "changed": bool(pairs or espn_changed),
+                }
+            except (HTTPException, ChromeError, MineError, httpx.HTTPError):
+                raise
+            except Exception as exc:
+                _record_refresh_exception(exc)
+                raise
     finally:
         state.refresh_jobs = max(0, state.refresh_jobs - 1)
         state.refreshing = state.refresh_jobs > 0
@@ -562,8 +628,8 @@ async def refresh_watch_ids() -> dict[str, Any]:
 async def refresh_loop() -> None:
     delay = 30
     while True:
-        if state.store.signed_in:
-            try:
+        try:
+            if state.store.signed_in:
                 now = datetime.now(timezone.utc)
                 due = (
                     state.last_full_mine_at is None
@@ -574,15 +640,25 @@ async def refresh_loop() -> None:
                     await refresh_catalog()
                 else:
                     await refresh_watch_ids()
+                state.refresh_error = None
                 delay = max(settings.refresh_seconds, 30)
-            except Exception:
-                log.exception("Background guide refresh failed")
-                delay = 60
-        elif settings.enable_chrome:
-            await _sync_session_from_chrome()
-            delay = 30
-        else:
-            delay = max(settings.refresh_seconds, 30)
+            elif settings.enable_chrome:
+                if await _sync_session_from_chrome():
+                    state.storage_error = None
+                state.refresh_error = None
+                delay = 30
+            else:
+                delay = max(settings.refresh_seconds, 30)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log.exception("Background guide refresh failed")
+            if isinstance(exc, (ChromeError, MineError, httpx.HTTPError)):
+                if not state.refresh_error:
+                    state.refresh_error = for_ui(str(exc)) or _format_refresh_error(exc)
+            else:
+                _record_refresh_exception(exc)
+            delay = 60
         await asyncio.sleep(delay)
 
 
@@ -611,6 +687,7 @@ async def evidence_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    _configure_logging()
     state.station_logos = load_station_logos(settings.station_logos_file)
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     prune_chrome_profile(settings.chrome_profile_dir, cap_cache=True)
@@ -658,10 +735,10 @@ app.mount("/static", StaticFiles(directory=str(ROOT / "static")), name="static")
 
 @app.get("/health")
 async def health() -> dict[str, Any]:
-    meta = state.catalog.meta()
-    auth = _session_view(meta, await _chrome_snapshot())
+    meta, read_error = _safe_catalog_meta()
+    auth = _session_view(meta, await _chrome_snapshot(), storage_error=read_error)
     return {
-        "ok": True,
+        "ok": read_error is None and state.storage_error is None,
         "signed_in": auth["signed_in"],
         "session_expired": auth["session_expired"],
         "chrome": settings.enable_chrome,
@@ -726,14 +803,24 @@ async def dashboard(request: Request) -> HTMLResponse:
 
 @app.get("/api/status")
 async def api_status() -> dict[str, Any]:
-    meta = state.catalog.meta()
-    auth = _session_view(meta, await _chrome_snapshot())
+    meta, read_error = _safe_catalog_meta()
+    auth = _session_view(meta, await _chrome_snapshot(), storage_error=read_error)
+    if read_error is None:
+        hide_spanish = state.catalog.hide_spanish()
+        xmltv_live_on_air = state.catalog.xmltv_live_on_air()
+        hidden_sports = state.catalog.hidden_sports()
+        hidden_channels = state.catalog.hidden_channels()
+    else:
+        hide_spanish = False
+        xmltv_live_on_air = False
+        hidden_sports = []
+        hidden_channels = []
     return {
         "signed_in": auth["signed_in"],
         "session_expired": auth["session_expired"],
-        "hide_spanish": state.catalog.hide_spanish(),
-        "xmltv_live_on_air": state.catalog.xmltv_live_on_air(),
-        "filter_revision": _filter_revision(state.catalog.hidden_sports(), state.catalog.hidden_channels()),
+        "hide_spanish": hide_spanish,
+        "xmltv_live_on_air": xmltv_live_on_air,
+        "filter_revision": _filter_revision(hidden_sports, hidden_channels),
         "last_refresh": meta.get("last_refresh"),
         "last_error": auth["last_error"],
         "refreshing": state.refreshing,
@@ -806,6 +893,8 @@ async def auth_logout() -> dict[str, bool]:
     state.last_chrome_keepalive_at = None
     state.store.clear()
     state.catalog.clear_error()
+    state.refresh_error = None
+    state.storage_error = None
     state.innertube.set_browser_post(None)
     return {"ok": True}
 
@@ -894,8 +983,8 @@ async def api_refresh() -> dict[str, Any]:
     except HTTPException:
         raise
     except Exception as exc:
-        stored = for_ui(state.catalog.meta().get("last_error")) or str(exc)
-        raise HTTPException(status_code=502, detail=stored) from exc
+        detail = state.refresh_error or for_ui(str(exc))
+        raise HTTPException(status_code=502, detail=detail) from exc
 
 
 @app.get("/api/broadcast-evidence")
@@ -903,7 +992,10 @@ async def broadcast_evidence(
     limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0, le=1000),
     history: bool = False, include_capture: bool = False,
 ) -> dict[str, Any]:
-    state.evidence.prune(datetime.now(timezone.utc))
+    try:
+        state.evidence.prune(datetime.now(timezone.utc))
+    except (sqlite3.Error, OSError):
+        log.warning("Could not prune broadcast evidence during read", exc_info=True)
     return {"mode": "observe_only", "automatic_exclusions": False,
             "enabled": settings.detail_evidence,
             "last_cycle": state.evidence_last_cycle, "error": state.evidence_error,

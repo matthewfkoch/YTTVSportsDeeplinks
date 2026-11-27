@@ -394,3 +394,18 @@ def test_replace_preserves_existing_rows_if_prep_raises(tmp_path):
     assert len(catalog.assignments()) == 1
     catalog.checkpoint()
     catalog.close()
+
+
+def test_set_error_does_not_update_last_refresh(tmp_path):
+    start = datetime(2026, 9, 5, 16, 0, tzinfo=timezone.utc)
+    game = _airing("UConn vs Maryland", start)
+    catalog = Catalog(tmp_path / "catalog.sqlite")
+    catalog.replace([game], pack_lanes([game], 1))
+    fixed_refresh = "2026-01-01T00:00:00+00:00"
+    catalog._set_meta("last_refresh", fixed_refresh)
+    catalog._conn.commit()
+    catalog.set_error("Guide refresh failed")
+    meta = catalog.meta()
+    assert meta["last_error"] == "Guide refresh failed"
+    assert meta["last_refresh"] == fixed_refresh
+    catalog.close()
