@@ -1,5 +1,12 @@
 name: CI
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 on:
   push:
     branches: [main]
@@ -8,6 +15,8 @@ on:
       - "tests/**"
       - "README.md"
       - "Dockerfile"
+      - ".dockerignore"
+      - ".env.example"
       - "chromium-policy.json"
       - "docker-compose.yml"
       - "entrypoint.sh"
@@ -21,6 +30,8 @@ on:
       - "tests/**"
       - "README.md"
       - "Dockerfile"
+      - ".dockerignore"
+      - ".env.example"
       - "chromium-policy.json"
       - "docker-compose.yml"
       - "entrypoint.sh"
@@ -39,15 +50,22 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
 
       - name: Install dependencies
         run: pip install ".[dev]"
 
       - name: Syntax check
         id: syntax
-        run: python -m compileall -q src
+        run: |
+          python -m compileall -q src
+          sh -n entrypoint.sh
 
       - name: JavaScript regression tests
+        id: js
         run: node --test tests/js/*.test.cjs
 
       - name: Tests
@@ -57,6 +75,31 @@ jobs:
       - name: Build Docker image
         id: docker
         run: docker build -t yttvsportsdeeplinks:ci .
+
+      - name: Smoke test Docker image
+        id: smoke
+        run: |
+          docker run -d --name yttv-ci-smoke -e ENABLE_CHROME=0 -p 127.0.0.1:8095:8095 yttvsportsdeeplinks:ci
+          trap 'docker rm -f yttv-ci-smoke >/dev/null 2>&1 || true' EXIT
+          python3 - <<'PY'
+          import json
+          import time
+          import urllib.request
+
+          deadline = time.monotonic() + 30
+          last_error = None
+          while time.monotonic() < deadline:
+              try:
+                  with urllib.request.urlopen("http://127.0.0.1:8095/health", timeout=2) as resp:
+                      body = json.loads(resp.read().decode("utf-8"))
+                      if resp.status == 200 and body.get("ok") is True:
+                          print("Smoke test passed:", body)
+                          raise SystemExit(0)
+              except Exception as exc:
+                  last_error = exc
+                  time.sleep(0.5)
+          raise SystemExit(f"Container health check failed: {last_error}")
+          PY
 
       - name: Job summary
         if: always()
@@ -73,6 +116,14 @@ jobs:
             syntax="⏭️ Skipped"
           else
             syntax="❌ Errors"
+          fi
+
+          if [[ "${{ steps.js.outcome }}" == "success" ]]; then
+            js_line="✅ Passed"
+          elif [[ "${{ steps.js.outcome }}" == "skipped" ]]; then
+            js_line="⏭️ Skipped"
+          else
+            js_line="❌ Failed"
           fi
 
           if [[ -f test-results.xml ]]; then
@@ -92,8 +143,10 @@ jobs:
             test_line="❌ Tests did not complete"
           fi
 
-          if [[ "${{ steps.docker.outcome }}" == "success" ]]; then
-            docker_line="✅ Image built"
+          if [[ "${{ steps.docker.outcome }}" == "success" && "${{ steps.smoke.outcome }}" == "success" ]]; then
+            docker_line="✅ Image built & healthy"
+          elif [[ "${{ steps.docker.outcome }}" == "success" && "${{ steps.smoke.outcome }}" != "success" ]]; then
+            docker_line="❌ Smoke test failed"
           elif [[ "${{ steps.docker.outcome }}" == "skipped" ]]; then
             docker_line="⏭️ Skipped"
           else
@@ -108,9 +161,10 @@ jobs:
             echo "| **Status** | ${status} |"
             echo "| **Python** | 3.12 |"
             echo "| **Syntax check** | ${syntax} |"
-            echo "| **Docker build** | ${docker_line} |"
+            echo "| **JS tests** | ${js_line} |"
+            echo "| **Docker** | ${docker_line} |"
             echo "| **Trigger** | \`${{ github.event_name }}\` on \`${{ github.ref_name }}\` |"
             echo "| **Commit** | [\`${{ github.sha }}\`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}) |"
             echo ""
-            echo "**Tests:** ${test_line}"
+            echo "**Python tests:** ${test_line}"
           } >> "$GITHUB_STEP_SUMMARY"

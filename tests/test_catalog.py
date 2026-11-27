@@ -371,3 +371,26 @@ def test_saved_vix_exclusions_collapse_and_can_be_reenabled(tmp_path):
     assert catalog.hidden_channels() == ["FS2", "ViX"]
     catalog.set_hidden_channels(["FS2"])
     assert Catalog(path).hidden_channels() == ["FS2"]
+
+
+def test_replace_preserves_existing_rows_if_prep_raises(tmp_path):
+    import pytest
+
+    start = datetime(2026, 9, 5, 16, 0, tzinfo=timezone.utc)
+    game = _airing("UConn vs Maryland", start)
+    catalog = Catalog(tmp_path / "catalog.sqlite")
+    catalog.replace([game], pack_lanes([game], 2))
+
+    class BadAiring:
+        video_id = "bad"
+
+        @property
+        def start(self):
+            raise RuntimeError("prep failure")
+
+    with pytest.raises(RuntimeError, match="prep failure"):
+        catalog.replace([BadAiring()], [])  # type: ignore[list-item]
+    assert len(catalog.events()) == 1
+    assert len(catalog.assignments()) == 1
+    catalog.checkpoint()
+    catalog.close()

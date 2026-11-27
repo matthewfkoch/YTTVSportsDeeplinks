@@ -110,6 +110,21 @@ class Catalog:
         self._remember_station_logos(self._conn, self.events())
         self._conn.commit()
 
+    def checkpoint(self) -> None:
+        with self._lock:
+            try:
+                self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            except sqlite3.Error:
+                pass
+
+    def close(self) -> None:
+        with self._lock:
+            try:
+                self._conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+            except sqlite3.Error:
+                pass
+            self._conn.close()
+
     def _remember_station_logos(self, cur, events: list[Airing]) -> None:
         cur.executemany(
             "INSERT INTO station_logos(station, url) VALUES (?, ?) ON CONFLICT(station) DO UPDATE SET url=excluded.url",
@@ -184,9 +199,6 @@ class Catalog:
         visible_count: Optional[int] = None,
         watchable_count: Optional[int] = None,
     ) -> None:
-        cur = self._conn.cursor()
-        cur.execute("DELETE FROM events")
-        cur.execute("DELETE FROM lanes")
         unique: dict[tuple[str, int], Airing] = {}
         for item in airings:
             key = (item.video_id, int(item.start.timestamp()))
@@ -198,7 +210,10 @@ class Catalog:
             else:
                 unique[key] = keep_artwork(prev, item)
         rows = list(unique.values())
+        cur = self._conn.cursor()
         try:
+            cur.execute("DELETE FROM events")
+            cur.execute("DELETE FROM lanes")
             self._remember_station_logos(cur, airings)
             cur.executemany(
                 """

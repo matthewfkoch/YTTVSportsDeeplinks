@@ -274,3 +274,17 @@ def test_spanish_description_evidence_is_scoped_and_observational(description, s
     assert evidence['automatic_exclusions'] is False
     assert xmltv([LaneAssignment(1, GAME)], 1, now=NOW, live_on_air=True) == before
     assert extract_evidence(replace(GAME, title='Other game'), capture)['description_evidence'] == []
+
+
+@pytest.mark.asyncio
+async def test_collect_evidence_skips_unscheduled_airings(tmp_path, monkeypatch):
+    store = EvidenceStore(tmp_path / 'evidence.sqlite')
+    capture = AsyncMock(return_value=CAPTURE)
+    monkeypatch.setattr('yttv_epg.detail_evidence.capture_details', capture)
+    date_only = replace(GAME, start_source='date')
+    legacy = replace(GAME, start_source='legacy')
+    count = await collect_evidence(store, object(), object(), [date_only, legacy], now=NOW)
+    assert count == 0
+    assert capture.await_count == 0
+    store.checkpoint()
+    store.close()

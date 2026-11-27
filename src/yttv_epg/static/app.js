@@ -121,7 +121,7 @@ function reloadDashboard() {
 }
 
 async function runAction(message, request, options = {}) {
-  errorEl.textContent = "";
+  if (errorEl) errorEl.textContent = "";
   actionInFlight = true;
   showToast(message);
   try {
@@ -300,16 +300,21 @@ function restoreChipState(snapshot) {
   snapshot.forEach(({ el, on }) => chipOn(el, on));
 }
 
+function findChip(containerId, attr, value) {
+  return [...document.querySelectorAll(`#${containerId} [${attr}]`)]
+    .find((el) => el.getAttribute(attr) === value) || null;
+}
+
 function applyFilterState(body) {
   if (liveOnAirToggle && typeof body.xmltv_live_on_air === "boolean") liveOnAirToggle.checked = body.xmltv_live_on_air;
   const languageToggle = document.getElementById("hide-spanish");
   if (languageToggle && typeof body.hide_spanish === "boolean") languageToggle.checked = body.hide_spanish;
   if (body.toggle) {
-    const button = document.querySelector(`#sport-chips [data-sport="${body.toggle}"]`);
+    const button = findChip("sport-chips", "data-sport", body.toggle);
     if (button) chipOn(button, button.classList.contains("off"));
   }
   if (body.toggle_channel) {
-    const button = document.querySelector(`#channel-chips [data-channel="${body.toggle_channel}"]`);
+    const button = findChip("channel-chips", "data-channel", body.toggle_channel);
     if (button) chipOn(button, button.classList.contains("off"));
   }
   if (Array.isArray(body.hidden)) {

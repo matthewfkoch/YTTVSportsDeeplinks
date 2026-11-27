@@ -188,7 +188,7 @@ Pushes and pull requests run `.github/workflows/ci.yml` (syntax check, pytest, D
 
 If the package is still private (the default when the repo started private), open **Packages → yttvsportsdeeplinks → Package settings**, link it to this repo, and set visibility to **Public** so `docker pull` works without a GitHub login.
 
-To cut a release, bump `src/yttv_epg/__init__.py` and `pyproject.toml`, then:
+To cut a release, bump `__version__` in `src/yttv_epg/__init__.py` (`pyproject.toml` reads it automatically), then:
 
 ```bash
 git tag vX.Y.Z

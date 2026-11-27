@@ -1369,9 +1369,7 @@ def _coerce_time(value: Any) -> Optional[datetime]:
         return _as_utc(value)
     if isinstance(value, (int, float)):
         number = float(value)
-        if number > 1e12:
-            number /= 1000.0
-        elif 1e11 < number <= 1e12:
+        if number > 1e11:
             number /= 1000.0
         if number < MIN_UNIX_TS or number > MAX_UNIX_TS:
             return None

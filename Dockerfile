@@ -23,11 +23,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY chromium-policy.json /etc/chromium/policies/managed/yttv.json
-COPY pyproject.toml requirements.txt README.md LICENSE ./
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 COPY entrypoint.sh /app/entrypoint.sh
 
-RUN pip install --no-cache-dir . \
+RUN pip install --no-cache-dir --no-deps . \
     && chmod +x /app/entrypoint.sh
 
 VOLUME ["/data"]

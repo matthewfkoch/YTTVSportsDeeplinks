@@ -184,3 +184,25 @@ test('saving the Live preference triggers a reload so the rendered badges update
 
   assert.equal(h.reloads, 1);
 });
+
+test('toggling a channel chip with quotes does not break selector lookup', async () => {
+  const classes = new Set(['chip', 'on']);
+  const chip = {
+    dataset: { channel: 'Channel "A" [HD]' },
+    getAttribute(attr) { return attr === 'data-channel' ? 'Channel "A" [HD]' : null; },
+    classList: {
+      contains(name) { return classes.has(name); },
+      toggle(name, on) { if (on) classes.add(name); else classes.delete(name); },
+    },
+  };
+  const h = harness();
+  h.context.document.querySelectorAll = (sel) => (sel === '#channel-chips [data-channel]' ? [chip] : []);
+  h.context.document.querySelector = () => { throw new SyntaxError('invalid selector'); };
+  await h.prime();
+
+  const save = h.run('postFilter({toggle_channel: "Channel \\"A\\" [HD]"}, "Saving")');
+  assert.equal(classes.has('off'), true);
+  h.respond(h.requests.shift(), { hidden_channels: ['Channel "A" [HD]'], filter_revision: 'quoted' });
+  await save;
+  assert.equal(classes.has('off'), true);
+});

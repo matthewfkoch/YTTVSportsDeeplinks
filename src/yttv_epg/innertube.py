@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Optional
 
 import httpx
@@ -480,7 +480,7 @@ class InnerTubeClient:
                     "clientVersion": client["version"],
                     "hl": "en",
                     "gl": "US",
-                    "utcOffsetMinutes": -240,
+                    "utcOffsetMinutes": _utc_offset_minutes(),
                     "timeZone": "America/New_York",
                     "platform": "DESKTOP",
                     "unpluggedAppInfo": {"filterModeType": "1"},
@@ -532,6 +532,12 @@ class InnerTubeClient:
         except json.JSONDecodeError:
             data = None
         return response.status_code, data
+
+
+def _utc_offset_minutes(now: Optional[datetime] = None) -> int:
+    current = (now or datetime.now(timezone.utc)).astimezone(GAME_CARD_ZONE)
+    offset = current.utcoffset()
+    return int(offset.total_seconds() // 60) if offset is not None else -300
 
 
 def _sports_chip_jobs(*payloads: dict[str, Any]) -> list[tuple[str, str, dict[str, str]]]:

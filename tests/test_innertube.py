@@ -411,3 +411,10 @@ async def test_watch_resolution_preserves_only_matching_station_logo(station, ex
         resolved = await client.resolve_watch(SESSION, CLIENTS[0], pending)
     assert resolved.watch_id() == "abcdefghijk"
     assert bool(resolved.station_logo) == expected
+
+
+def test_utc_offset_minutes_reflects_edt_and_est():
+    from yttv_epg.innertube import _utc_offset_minutes
+
+    assert _utc_offset_minutes(datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc)) == -240
+    assert _utc_offset_minutes(datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)) == -300

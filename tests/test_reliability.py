@@ -178,3 +178,30 @@ def test_unreadable_session_does_not_escape_as_startup_exception(tmp_path,monkey
     def fail(*args,**kwargs):raise PermissionError('Unreadable')
     monkeypatch.setattr(Path,'read_bytes',fail)
     assert store.load() is None and store.load_error
+
+
+def test_packaging_requirements_and_dynamic_version_stay_in_sync():
+    import tomllib
+
+    root = Path(__file__).resolve().parent.parent
+    pyproject = tomllib.loads((root / 'pyproject.toml').read_text(encoding='utf-8'))
+    requirements = [
+        line.strip()
+        for line in (root / 'requirements.txt').read_text(encoding='utf-8').splitlines()
+        if line.strip() and not line.lstrip().startswith('#')
+    ]
+    assert requirements == pyproject['project']['dependencies']
+    assert 'version' in pyproject['project'].get('dynamic', [])
+    assert pyproject['tool']['setuptools']['dynamic']['version'] == {'attr': 'yttv_epg.__version__'}
+
+
+def test_dashboard_uses_content_hashed_css_and_js():
+    import re
+    from fastapi.testclient import TestClient
+    from yttv_epg.app import SCRIPT_VERSION, STYLE_VERSION, app
+
+    with TestClient(app) as client:
+        html = client.get('/').text
+    assert f'/static/app.js?v={SCRIPT_VERSION}' in html
+    assert f'/static/app.css?v={STYLE_VERSION}' in html
+    assert re.fullmatch(r'[0-9a-f]{16}', STYLE_VERSION)

@@ -12,19 +12,18 @@ on:
         default: true
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 env:
   DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
   REGISTRY: ghcr.io
-  # GHCR requires lowercase image names (repository may be mixed-case).
-  IMAGE_NAME: ${{ github.repository_owner }}/yttvsportsdeeplinks
 
 jobs:
   test:
     name: Tests
     runs-on: ubuntu-26.04
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
 
@@ -32,9 +31,36 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
 
       - name: Install dependencies
         run: pip install ".[dev]"
+
+      - name: Verify release tag matches package version
+        if: github.ref_type == 'tag'
+        run: |
+          python3 - <<'PY'
+          import importlib.metadata
+          import os
+          import yttv_epg
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          expected = f"v{yttv_epg.__version__}"
+          pkg_version = importlib.metadata.version("yttvsportsdeeplinks")
+          if pkg_version != yttv_epg.__version__:
+              raise SystemExit(f"Package metadata version {pkg_version!r} != yttv_epg.__version__ {yttv_epg.__version__!r}")
+          if tag != expected:
+              raise SystemExit(f"Git tag {tag!r} does not match expected version tag {expected!r}")
+          print(f"Verified tag {tag} matches package version {pkg_version}")
+          PY
+
+      - name: Syntax check
+        run: |
+          python -m compileall -q src
+          sh -n entrypoint.sh
 
       - name: JavaScript regression tests
         run: node --test tests/js/*.test.cjs
@@ -46,6 +72,9 @@ jobs:
     name: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'Build and verify Docker image' || 'Publish Docker image' }}
     needs: [test]
     runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v7
 
@@ -166,6 +195,8 @@ jobs:
     name: Publish GitHub Release
     needs: [publish-docker]
     runs-on: ubuntu-26.04
+    permissions:
+      contents: write
     if: github.ref_type == 'tag' && (github.event_name != 'workflow_dispatch' || !inputs.dry_run)
     steps:
       - uses: actions/checkout@v7

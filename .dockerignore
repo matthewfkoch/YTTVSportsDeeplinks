@@ -3,7 +3,12 @@
 venv
 __pycache__
 .pytest_cache
+.mypy_cache
+.cursor
 *.egg-info
+build
+dist
 data
 .env
+.DS_Store
 tests

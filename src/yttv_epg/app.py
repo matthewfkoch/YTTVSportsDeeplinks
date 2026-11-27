@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import secrets
 from dataclasses import replace
 from contextlib import asynccontextmanager
@@ -51,8 +52,10 @@ from yttv_epg.sports import (
 )
 
 ROOT = Path(__file__).resolve().parent
+log = logging.getLogger(__name__)
 templates = Jinja2Templates(directory=str(ROOT / "templates"))
 SCRIPT_VERSION = hashlib.sha256((ROOT / "static" / "app.js").read_bytes()).hexdigest()[:16]
+STYLE_VERSION = hashlib.sha256((ROOT / "static" / "app.css").read_bytes()).hexdigest()[:16]
 MAX_LANE_COUNT = 750
 
 
@@ -456,54 +459,55 @@ async def refresh_catalog() -> dict[str, Any]:
     state.refreshing = True
     try:
         async with state.refresh_lock:
-            await _sync_session_from_chrome()
-            await _touch_chrome_login()
-            await _refresh_espn_listings()
-            session = _ensure_session()
             try:
-                mined = await _mine_with_chrome_recovery(session)
-            except (ChromeError, MineError, httpx.HTTPError) as exc:
-                await _mark_refresh_failure(exc)
-                raise
-            events = merge_airings(
-                apply_espn_sports(
-                    merge_airings(item for item in mined.airings if item.kind == "event"),
-                    state.espn_listings,
+                await _sync_session_from_chrome()
+                await _touch_chrome_login()
+                await _refresh_espn_listings()
+                session = _ensure_session()
+                try:
+                    mined = await _mine_with_chrome_recovery(session)
+                except (ChromeError, MineError, httpx.HTTPError) as exc:
+                    await _mark_refresh_failure(exc)
+                    raise
+                events = merge_airings(
+                    apply_espn_sports(
+                        merge_airings(item for item in mined.airings if item.kind == "event"),
+                        state.espn_listings,
+                    )
                 )
-            )
-            visible = _visible_events(events)
-            watchable = _watchable_events(events)
-            assignments = _pack_visible(visible, keep_legacy_lanes=True)
-            linear_ignored = len(mined.airings) - len(events)
-            state.catalog.replace(
-                events,
-                assignments,
-                client=mined.client,
-                browse_id=mined.browse_id,
-                linear_ignored=linear_ignored,
-                dropped=max(0, len(visible) - len(assignments)),
-                visible_count=len(visible),
-                watchable_count=len(watchable),
-            )
-            _set_lane_cache(assignments)
-            state.last_full_mine_at = datetime.now(timezone.utc)
-            await _sync_session_from_chrome()
-            if settings.allow_debug:
-                state.catalog.save_debug(settings.data_dir, "last_browse.json", mined.raw)
-            return {
-                "ok": True,
-                "events": len(visible),
-                "all_events": len(events),
-                "hidden": len(events) - len(visible),
-                "linear": linear_ignored,
-                "lanes_used": len({row.lane for row in assignments}),
-                "dropped": max(0, len(visible) - len(assignments)),
-                "client": mined.client,
-                "browse_id": mined.browse_id,
-            }
+                visible = _visible_events(events)
+                watchable = _watchable_events(events)
+                assignments = _pack_visible(visible, keep_legacy_lanes=True)
+                linear_ignored = len(mined.airings) - len(events)
+                state.catalog.replace(
+                    events,
+                    assignments,
+                    client=mined.client,
+                    browse_id=mined.browse_id,
+                    linear_ignored=linear_ignored,
+                    dropped=max(0, len(visible) - len(assignments)),
+                    visible_count=len(visible),
+                    watchable_count=len(watchable),
+                )
+                _set_lane_cache(assignments)
+                state.last_full_mine_at = datetime.now(timezone.utc)
+                await _sync_session_from_chrome()
+                if settings.allow_debug:
+                    state.catalog.save_debug(settings.data_dir, "last_browse.json", mined.raw)
+                return {
+                    "ok": True,
+                    "events": len(visible),
+                    "all_events": len(events),
+                    "hidden": len(events) - len(visible),
+                    "linear": linear_ignored,
+                    "lanes_used": len({row.lane for row in assignments}),
+                    "dropped": max(0, len(visible) - len(assignments)),
+                    "client": mined.client,
+                    "browse_id": mined.browse_id,
+                }
+            finally:
+                await _park_chrome()
     finally:
-        async with state.refresh_lock:
-            await _park_chrome()
         state.refresh_jobs = max(0, state.refresh_jobs - 1)
         state.refreshing = state.refresh_jobs > 0
 
@@ -572,6 +576,7 @@ async def refresh_loop() -> None:
                     await refresh_watch_ids()
                 delay = max(settings.refresh_seconds, 30)
             except Exception:
+                log.exception("Background guide refresh failed")
                 delay = 60
         elif settings.enable_chrome:
             await _sync_session_from_chrome()
@@ -600,6 +605,7 @@ async def evidence_loop() -> None:
             raise
         except Exception as exc:
             # Diagnostics must never interrupt the guide refresh loop.
+            log.warning("Background evidence collection failed: %s", type(exc).__name__, exc_info=True)
             state.evidence_error = type(exc).__name__
 
 
@@ -625,7 +631,7 @@ async def lifespan(_app: FastAPI):
     try:
         await asyncio.wait_for(_sync_session_from_chrome(), timeout=8)
     except Exception:
-        pass
+        log.debug("Initial Chromium session sync skipped", exc_info=True)
     task = asyncio.create_task(refresh_loop())
     evidence_task = asyncio.create_task(evidence_loop())
     try:
@@ -635,6 +641,8 @@ async def lifespan(_app: FastAPI):
         evidence_task.cancel()
         await asyncio.gather(task, evidence_task, return_exceptions=True)
         await state.http.aclose()
+        state.catalog.checkpoint()
+        state.evidence.checkpoint()
 
 
 app = FastAPI(
@@ -686,6 +694,7 @@ async def dashboard(request: Request) -> HTMLResponse:
             "last_error": auth["last_error"] or "",
             "session_recovery_error": getattr(state.store, "load_error", ""),
             "script_version": SCRIPT_VERSION,
+            "style_version": STYLE_VERSION,
             "client": meta.get("last_client") or "",
             "browse_id": meta.get("last_browse_id") or "",
             "event_count": len(visible),

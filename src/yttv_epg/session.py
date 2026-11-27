@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from typing import Any, Iterable
+from typing import Iterable
 
 ORIGIN = "https://tv.youtube.com"
 

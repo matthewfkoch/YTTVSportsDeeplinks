@@ -192,6 +192,21 @@ class EvidenceStore:
             );
         ''')
 
+    def checkpoint(self) -> None:
+        with self.lock:
+            try:
+                self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            except sqlite3.Error:
+                pass
+
+    def close(self) -> None:
+        with self.lock:
+            try:
+                self.conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+            except sqlite3.Error:
+                pass
+            self.conn.close()
+
     def get(self, key):
         with self.lock:
             row = self.conn.execute("SELECT * FROM cache WHERE key=?", (key,)).fetchone()
@@ -249,7 +264,7 @@ async def collect_evidence(store, client, session, airings, *, now=None, limit=4
     store.prune(now)
     pending = {}
     for airing in airings:
-        if (airing.kind != "event" or airing.end <= now or airing.end <= airing.start
+        if (airing.kind != "event" or not airing.has_scheduled_start or airing.end <= now or airing.end <= airing.start
                 or airing.start > now + timedelta(hours=24) or not (airing.entity_id or airing.watch_id())):
             continue
         key = cache_key(airing)
